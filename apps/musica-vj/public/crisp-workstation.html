@@ -1,0 +1,2103 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRISP Pro Audio Workstation</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #12121a;
+    --surface: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --accent: #00ffcc;
+    --accent-dim: #00ffcc33;
+    --danger: #ff3366;
+    --warning: #ffaa00;
+    --info: #00ccff;
+    --grid: #1e1e2e;
+    --slot: #252535;
+    --slot-active: #00ffcc22;
+    --slot-playing: #00ffcc44;
+    --track-header: #1a1a2e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .top-bar {
+    height: 48px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .logo { font-size: 18px; font-weight: bold; color: var(--accent); letter-spacing: 2px; }
+  .nav-tabs { display: flex; gap: 4px; }
+  .nav-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .nav-tab:hover { color: var(--text); border-color: var(--text-dim); }
+  .nav-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+  .transport {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .bpm-display { font-size: 20px; color: var(--accent); min-width: 70px; }
+  .btn {
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  .btn:hover { border-color: var(--text-dim); }
+  .btn.accent { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+  .btn.danger { background: #ff336622; color: var(--danger); border-color: var(--danger); }
+  .btn.info { border-color: var(--info); color: var(--info); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .midi-learn-active { background: var(--warning) !important; color: var(--bg) !important; border-color: var(--warning) !important; }
+
+  .main-content { flex: 1; display: flex; overflow: hidden; position: relative; }
+  .view { display: none; flex: 1; flex-direction: column; padding: 12px; gap: 12px; overflow: auto; }
+  .view.active { display: flex; }
+
+  .desk-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    color: var(--text-dim);
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+  .desk-dropzone:hover, .desk-dropzone.dragover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .desk-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .file-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    position: relative;
+  }
+  .file-card .waveform { height: 50px; background: var(--bg); border-radius: 4px; margin: 8px 0; overflow: hidden; }
+  .file-card .waveform canvas { width: 100%; height: 100%; }
+  .file-meta { font-size: 10px; color: var(--text-dim); display: flex; gap: 8px; flex-wrap: wrap; }
+  .file-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+  .live-container { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+  .session-grid { display: flex; flex: 1; gap: 2px; background: var(--bg); border: 1px solid var(--border); overflow: auto; }
+  .track-lane { flex: 1; min-width: 100px; display: flex; flex-direction: column; }
+  .track-header {
+    background: var(--track-header);
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .track-controls { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .track-control-row { display: flex; align-items: center; gap: 4px; font-size: 9px; }
+  .track-control-row label { width: 24px; color: var(--text-dim); }
+  .slider { flex: 1; -webkit-appearance: none; height: 3px; background: var(--bg); border-radius: 2px; outline: none; }
+  .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+  .scenes { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 4px; }
+  .scene-slot {
+    flex: 1; min-height: 50px; background: var(--slot); border: 1px solid var(--border); border-radius: 4px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer;
+    transition: all 0.2s; position: relative; overflow: hidden;
+  }
+  .scene-slot:hover { border-color: var(--text-dim); }
+  .scene-slot.active { border-color: var(--accent); background: var(--slot-active); }
+  .scene-slot.playing { border-color: var(--accent); background: var(--slot-playing); }
+  .scene-slot .slot-name { font-size: 9px; color: var(--text-dim); text-align: center; padding: 2px; word-break: break-all; }
+  .scene-col-header { display: flex; align-items: center; justify-content: center; padding: 6px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-dim); cursor: pointer; }
+  .scene-col-header:hover { color: var(--accent); }
+
+  .mixer {
+    height: 160px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 2px;
+    padding: 6px;
+    overflow-x: auto;
+  }
+  .mixer-channel {
+    flex: 1; min-width: 70px;
+    display: flex; flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    background: var(--surface);
+    border-radius: 4px;
+  }
+  .mixer-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; }
+  .mixer-fader { flex: 1; width: 20px; -webkit-appearance: slider-vertical; writing-mode: bt-lr; }
+  .mixer-knob {
+    width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 8px;
+    color: var(--text-dim); cursor: pointer;
+  }
+
+  .track-editor { display: flex; flex: 1; gap: 12px; }
+  .track-timeline {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    position: relative;
+    overflow: auto;
+  }
+  .track-ruler {
+    height: 28px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    gap: 8px;
+  }
+  .track-ruler .playhead {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    z-index: 3;
+    pointer-events: none;
+    transition: left 0.05s linear;
+  }
+  .track-lanes { display: flex; flex-direction: column; position: relative; }
+  .track-lane-edit {
+    height: 80px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    background: var(--bg);
+  }
+  .track-lane-edit:last-child { border-bottom: none; }
+  .track-lane-edit .lane-label {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--panel);
+    padding: 0 6px;
+    border-radius: 3px;
+    z-index: 1;
+  }
+  .track-lane-edit .clip-block {
+    position: absolute;
+    top: 4px;
+    height: calc(100% - 8px);
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--accent);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding: 0 4px;
+    z-index: 2;
+  }
+  .track-lane-edit .clip-block.dragging { opacity: 0.5; }
+  .track-lane-edit .clip-block .delete-clip {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    font-size: 8px;
+    color: var(--danger);
+    cursor: pointer;
+    background: var(--bg);
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .track-sidebar {
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .plugin-rack {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .plugin-slot {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 6px;
+  }
+  .plugin-slot .plugin-header { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); }
+  .plugin-slot .plugin-controls { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .plugin-slot .plugin-controls label { font-size: 8px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
+  .plugin-slot .plugin-controls input { width: 40px; }
+
+  .chat-widget { position: fixed; bottom: 24px; right: 24px; z-index: 1000; }
+  .chat-toggle { width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: var(--bg); border: none; font-size: 20px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,255,204,0.3); }
+  .chat-panel {
+    position: absolute; bottom: 60px; right: 0; width: 340px; height: 460px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    display: none; flex-direction: column; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .chat-panel.open { display: flex; }
+  .chat-header { padding: 12px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .chat-header h3 { font-size: 13px; color: var(--accent); }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .chat-msg { max-width: 85%; padding: 8px 12px; border-radius: 6px; font-size: 12px; line-height: 1.4; }
+  .chat-msg.user { align-self: flex-end; background: var(--accent-dim); color: var(--accent); }
+  .chat-msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+  .chat-input-area { padding: 8px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+  .chat-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+  .chat-input:focus { border-color: var(--accent); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 2000; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
+  .modal h2 { font-size: 18px; margin-bottom: 16px; color: var(--accent); }
+  .modal p { font-size: 13px; line-height: 1.6; color: var(--text-dim); margin-bottom: 12px; }
+
+  #toast-container { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 3000; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+  .toast { background: var(--panel); border: 1px solid var(--accent); color: var(--accent); padding: 8px 20px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.6); opacity: 0; transform: translateY(20px); transition: all 0.3s ease; pointer-events: auto; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+  .badge-accent { background: var(--accent-dim); color: var(--accent); }
+  .badge-info { background: #00ccff22; color: var(--info); }
+  .badge-warn { background: #ffaa0022; color: var(--warning); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  @media (max-width: 768px) {
+    .session-grid { flex-direction: column; }
+    .track-lane { min-width: auto; }
+    .chat-panel { width: calc(100vw - 48px); right: -12px; }
+    .desk-files { grid-template-columns: 1fr; }
+    .top-bar { height: auto; }
+    .transport { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="logo">CRISP</div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchView('desk')">Desk</button>
+    <button class="nav-tab" onclick="switchView('live')">Live</button>
+    <button class="nav-tab" onclick="switchView('track')">Track</button>
+  </div>
+  <div class="transport">
+    <span class="bpm-display" id="bpmDisplay">128.0</span>
+    <button class="btn" id="playBtn" onclick="togglePlay()">▶ PLAY</button>
+    <button class="btn accent" onclick="tapTempo()">TAP</button>
+    <button class="btn danger" onclick="stopAll()">■ STOP</button>
+    <button class="btn info" id="midiLearnBtn" onclick="toggleMidiLearn()">🎛️ MIDI</button>
+    <button class="btn" onclick="bounceSession()" style="border-color:var(--info);color:var(--info);">⬇ Bounce</button>
+  </div>
+</div>
+
+<div class="main-content">
+  <div class="view active" id="deskView">
+    <div class="desk-dropzone" id="deskDropzone" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size:40px; margin-bottom:12px;">📁</div>
+      <div style="font-size:15px; margin-bottom:6px;">Drop audio files here</div>
+      <div style="font-size:11px; color:var(--text-dim);">
+        WAV, AIFF, MP3, FLAC • Up to 1.5 GB desktop / 400 MB mobile
+      </div>
+      <input type="file" id="fileInput" multiple accept="audio/*" style="display:none" onchange="handleFiles(this.files)">
+    </div>
+    <div class="desk-files" id="deskFiles"></div>
+  </div>
+
+  <div class="view" id="liveView">
+    <div class="live-container">
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+        <button class="btn" onclick="addInstrument('slowrave')">+ Slowrave</button>
+        <button class="btn" onclick="addInstrument('schranz')">+ Schranz</button>
+        <button class="btn" onclick="addInstrument('acid')">+ Acid</button>
+        <button class="btn" onclick="addInstrument('tekno')">+ Tekno</button>
+        <button class="btn" onclick="addInstrument('mental')">+ Mental</button>
+        <span class="badge badge-info">Kickback instruments park on Acid · Scene 1</span>
+        <button class="btn danger" onclick="clearSession()">Clear Session</button>
+      </div>
+      <div class="session-grid" id="sessionGrid"></div>
+      <div class="mixer" id="mixer"></div>
+    </div>
+  </div>
+
+  <div class="view" id="trackView">
+    <div class="track-editor">
+      <div class="track-timeline" id="trackTimeline">
+        <div class="track-ruler" id="trackRuler">
+          <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span>
+          <div class="playhead" id="playhead" style="left:0;"></div>
+        </div>
+        <div class="track-lanes" id="trackLanes"></div>
+      </div>
+      <div class="track-sidebar">
+        <div class="plugin-rack" id="pluginRack">
+          <h4 style="font-size:11px; color:var(--accent); margin-bottom:8px;">Track Plugins</h4>
+          <div id="pluginList"></div>
+          <button class="btn" onclick="addPluginToCurrentTrack()" style="width:100%;margin-top:8px;">+ Add Plugin</button>
+        </div>
+        <button class="btn accent" onclick="bounceSession()" style="width:100%;">⬇ Bounce Mix</button>
+        <button class="btn" onclick="bounceStems()" style="width:100%;border-color:var(--info);color:var(--info);">📁 Bounce Stems</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div class="chat-widget">
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-header"><h3>🔥 CRISP Engineer</h3><button class="btn" style="padding:4px 8px;" onclick="toggleChat()">✕</button></div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-msg bot"><strong>CRISP Engineer online.</strong><br>Ask about ES‑1/E2S, Live conversion, or MCP.</div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" class="chat-input" id="chatInput" placeholder="Ask the engineer..." onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn accent" onclick="sendChat()">→</button>
+    </div>
+  </div>
+  <button class="chat-toggle" id="chatToggle" onclick="toggleChat()">🔥</button>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+// ===================================================================
+//  STATE
+// ===================================================================
+const state = {
+  view: 'desk',
+  bpm: 128,
+  playing: false,
+  currentBeat: 0,
+  files: [],
+  live: {
+    tracks: Array(8).fill(null).map((_, i) => ({
+      id: i,
+      name: `Track ${i+1}`,
+      volume: 0.8,
+      pan: 0,
+      hpf: 0,
+      lpf: 1,
+      drive: 0,
+      send: 0,
+      mute: false,
+      solo: false,
+      clips: Array(8).fill(null),
+      plugins: []
+    })),
+    scenes: Array(8).fill(null).map((_, i) => ({ id: i, name: `Scene ${i+1}` })),
+    playingSlots: new Set(),
+    activeSources: new Map()
+  },
+  arrangement: { clips: [] },
+  audioCtx: null,
+  masterGain: null,
+  sendReturnNodes: null,
+  midiLearn: false,
+  midiMappings: {},
+  schedulerTimer: null,
+  playheadPosition: 0,
+  selectedTrackIdx: 0,
+  lastTap: [],
+  saveTimer: null,
+  // Track-level audio nodes for real-time updates
+  trackNodes: new Map() // trackIdx -> { gain, panner, hpf, lpf, drive, sendGain }
+};
+
+// ===================================================================
+//  AUDIO ENGINE
+// ===================================================================
+function initAudio() {
+  if (!state.audioCtx) {
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    state.masterGain = state.audioCtx.createGain();
+    state.masterGain.connect(state.audioCtx.destination);
+    state.masterGain.gain.value = 0.8;
+    createSendReturn();
+  }
+  if (state.audioCtx.state === 'suspended') {
+    state.audioCtx.resume();
+  }
+  return state.audioCtx;
+}
+
+function createSendReturn() {
+  const ctx = state.audioCtx;
+  const delay = ctx.createDelay(2.0);
+  delay.delayTime.value = 0.375;
+  const feedback = ctx.createGain();
+  feedback.gain.value = 0.3;
+  const reverb = ctx.createConvolver();
+  const irLength = Math.floor(ctx.sampleRate * 1.5);
+  const impulse = ctx.createBuffer(2, irLength, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = impulse.getChannelData(ch);
+    for (let i = 0; i < irLength; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLength, 2);
+    }
+  }
+  reverb.buffer = impulse;
+  const returnGain = ctx.createGain();
+  returnGain.gain.value = 0.4;
+  
+  delay.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(reverb);
+  reverb.connect(returnGain);
+  returnGain.connect(state.masterGain);
+  
+  state.sendReturnNodes = { delay, feedback, reverb, returnGain };
+}
+
+function getAudioCtx() {
+  initAudio();
+  return state.audioCtx;
+}
+
+// ===================================================================
+//  DECODE AUDIO (Fixed)
+// ===================================================================
+async function decodeAudioBuffer(arrayBuffer, fileName) {
+  const ctx = getAudioCtx();
+  try {
+    // Modern browsers return a Promise
+    const buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    return { success: true, buffer };
+  } catch (err) {
+    console.warn('Promise decode failed, trying callback:', err);
+    try {
+      // Fallback for older browsers
+      return new Promise((resolve) => {
+        ctx.decodeAudioData(arrayBuffer.slice(0),
+          (buffer) => resolve({ success: true, buffer }),
+          (err) => {
+            console.error('Decode failed:', err);
+            resolve({ success: false, error: err.message || 'Unknown decode error' });
+          }
+        );
+      });
+    } catch (err2) {
+      return { success: false, error: err2.message || 'Fatal decode error' };
+    }
+  }
+}
+
+// ===================================================================
+//  PLUGIN SYSTEM
+// ===================================================================
+const pluginTypes = {
+  delay: { name: 'Delay', params: { time: 0.375, feedback: 0.3, mix: 0.5 } },
+  reverb: { name: 'Reverb', params: { decay: 0.8, mix: 0.5 } },
+  eq: { name: 'EQ', params: { low: 0.5, mid: 0.5, high: 0.5 } },
+  compressor: { name: 'Compressor', params: { threshold: -20, ratio: 4, attack: 0.01, release: 0.1 } }
+};
+
+function addPluginToCurrentTrack() {
+  const track = state.live.tracks[state.selectedTrackIdx];
+  if (!track) return;
+  const types = Object.keys(pluginTypes);
+  const html = types.map(t => `<button class="btn" onclick="addPluginType('${t}')" style="margin:4px;">${pluginTypes[t].name}</button>`).join(' ');
+  showModal('Add Plugin', `<div style="display:flex;flex-wrap:wrap;">${html}</div>`);
+}
+
+function addPluginType(type) {
+  closeModal();
+  const track = state.live.tracks[state.selectedTrackIdx];
+  track.plugins.push({ type, params: { ...pluginTypes[type].params } });
+  renderPluginRack();
+  autoSave();
+}
+
+function renderPluginRack() {
+  const container = document.getElementById('pluginList');
+  const track = state.live.tracks[state.selectedTrackIdx];
+  if (!track) {
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">Select a track in the timeline</div>';
+    return;
+  }
+  if (track.plugins.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:10px;">No plugins. Click + Add Plugin.</div>';
+    return;
+  }
+  container.innerHTML = track.plugins.map((p, idx) => {
+    const controls = Object.entries(p.params).map(([key, val]) => {
+      let min = 0, max = 1, step = 0.01;
+      if (key === 'threshold') { min = -60; max = 0; step = 1; }
+      if (key === 'ratio') { min = 1; max = 20; step = 0.5; }
+      if (key === 'attack' || key === 'release') { min = 0.001; max = 1; step = 0.001; }
+      return `<label>${key} <input type="range" min="${min}" max="${max}" step="${step}" value="${val}" 
+        oninput="updatePluginParam(${state.selectedTrackIdx}, ${idx}, '${key}', this.value)"></label>`;
+    }).join('');
+    return `<div class="plugin-slot">
+      <div class="plugin-header"><span>${pluginTypes[p.type].name}</span>
+        <button class="btn" style="padding:2px 6px;font-size:8px;" onclick="removePlugin(${state.selectedTrackIdx}, ${idx})">✕</button>
+      </div>
+      <div class="plugin-controls">${controls}</div>
+    </div>`;
+  }).join('');
+}
+
+function updatePluginParam(trackIdx, pluginIdx, param, value) {
+  state.live.tracks[trackIdx].plugins[pluginIdx].params[param] = parseFloat(value);
+  // Update real-time nodes if playing
+  updateTrackAudioNodes(trackIdx);
+  autoSave();
+}
+
+function removePlugin(trackIdx, pluginIdx) {
+  state.live.tracks[trackIdx].plugins.splice(pluginIdx, 1);
+  renderPluginRack();
+  autoSave();
+}
+
+// Build plugin chain for a track
+function applyPlugins(trackIdx, sourceNode, targetCtx) {
+  const ctx = targetCtx || state.audioCtx;
+  const track = state.live.tracks[trackIdx];
+  let node = sourceNode;
+  
+  for (const plugin of track.plugins) {
+    if (plugin.type === 'delay') {
+      const d = ctx.createDelay(2.0);
+      d.delayTime.value = plugin.params.time;
+      const fb = ctx.createGain();
+      fb.gain.value = plugin.params.feedback;
+      const wet = ctx.createGain();
+      wet.gain.value = plugin.params.mix;
+      const dry = ctx.createGain();
+      dry.gain.value = 1 - plugin.params.mix;
+      
+      // Split: node -> dry AND node -> delay
+      node.connect(dry);
+      const delayInput = ctx.createGain();
+      delayInput.gain.value = 1;
+      node.connect(delayInput);
+      delayInput.connect(d);
+      d.connect(fb);
+      fb.connect(d);
+      d.connect(wet);
+      
+      const sum = ctx.createGain();
+      dry.connect(sum);
+      wet.connect(sum);
+      node = sum;
+    } else if (plugin.type === 'reverb') {
+      const conv = ctx.createConvolver();
+      const irLen = Math.floor(ctx.sampleRate * plugin.params.decay * 0.5);
+      const impulse = ctx.createBuffer(2, irLen, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = impulse.getChannelData(ch);
+        for (let i = 0; i < irLen; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 2);
+        }
+      }
+      conv.buffer = impulse;
+      const wet = ctx.createGain();
+      wet.gain.value = plugin.params.mix;
+      const dry = ctx.createGain();
+      dry.gain.value = 1 - plugin.params.mix;
+      
+      node.connect(dry);
+      node.connect(conv);
+      conv.connect(wet);
+      
+      const sum = ctx.createGain();
+      dry.connect(sum);
+      wet.connect(sum);
+      node = sum;
+    } else if (plugin.type === 'eq') {
+      const low = ctx.createBiquadFilter();
+      low.type = 'lowshelf';
+      low.frequency.value = 200;
+      low.gain.value = (plugin.params.low - 0.5) * 24;
+      const mid = ctx.createBiquadFilter();
+      mid.type = 'peaking';
+      mid.frequency.value = 1000;
+      mid.Q.value = 1;
+      mid.gain.value = (plugin.params.mid - 0.5) * 24;
+      const high = ctx.createBiquadFilter();
+      high.type = 'highshelf';
+      high.frequency.value = 5000;
+      high.gain.value = (plugin.params.high - 0.5) * 24;
+      
+      node.connect(low);
+      low.connect(mid);
+      mid.connect(high);
+      node = high;
+    } else if (plugin.type === 'compressor') {
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = plugin.params.threshold;
+      comp.ratio.value = plugin.params.ratio;
+      comp.attack.value = plugin.params.attack;
+      comp.release.value = plugin.params.release;
+      node.connect(comp);
+      node = comp;
+    }
+  }
+  return node;
+}
+
+// ===================================================================
+//  LIVE CLIP LAUNCH (Fixed with proper node cleanup)
+// ===================================================================
+function launchClip(trackIdx, sceneIdx) {
+  const clip = state.live.tracks[trackIdx].clips[sceneIdx];
+  if (!clip || !clip.file || !clip.file.buffer) {
+    showToast('No valid clip in this slot');
+    return;
+  }
+  
+  initAudio();
+  const ctx = state.audioCtx;
+  const track = state.live.tracks[trackIdx];
+  const key = `${trackIdx}-${sceneIdx}`;
+  
+  // Stop if already playing (toggle behavior)
+  if (state.live.playingSlots.has(key)) {
+    stopClip(trackIdx, sceneIdx);
+    return;
+  }
+  
+  // Quantize to next bar
+  const beatDuration = 60 / state.bpm;
+  const barDuration = beatDuration * 4;
+  const now = ctx.currentTime;
+  let nextBar = Math.ceil(now / barDuration) * barDuration;
+  if (nextBar - now < 0.05) nextBar += barDuration; // too close, skip to next
+  
+  const startTime = nextBar;
+  const waitMs = (startTime - now) * 1000;
+  
+  showToast(`Launching in ${(waitMs/1000).toFixed(2)}s...`);
+  
+  // Schedule the actual launch
+  setTimeout(() => {
+    if (!state.live.playingSlots.has(key)) { // not cancelled during wait
+      performLaunch(trackIdx, sceneIdx, startTime);
+    }
+  }, waitMs);
+}
+
+function performLaunch(trackIdx, sceneIdx, startTime) {
+  const clip = state.live.tracks[trackIdx].clips[sceneIdx];
+  if (!clip || !clip.file.buffer) return;
+  
+  const ctx = state.audioCtx;
+  const track = state.live.tracks[trackIdx];
+  const key = `${trackIdx}-${sceneIdx}`;
+  
+  // Create source
+  const source = ctx.createBufferSource();
+  source.buffer = clip.file.buffer;
+  const bufferDuration = clip.file.buffer.duration;
+  source.loop = bufferDuration < 30;
+  if (source.loop) {
+    source.loopStart = 0;
+    source.loopEnd = bufferDuration;
+  }
+  
+  // Build FX chain
+  let node = source;
+  
+  // Track filters (HPF/LPF)
+  const hpf = ctx.createBiquadFilter();
+  hpf.type = 'highpass';
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = 'lowpass';
+  
+  // Drive
+  const drive = ctx.createWaveShaper();
+  
+  // Plugins
+  node = applyPlugins(trackIdx, node);
+  
+  // Volume
+  const gain = ctx.createGain();
+  gain.gain.value = track.mute ? 0 : track.volume;
+  
+  // Pan
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = track.pan;
+  
+  // Send
+  const sendGain = ctx.createGain();
+  sendGain.gain.value = track.send * 0.5;
+  
+  // Connect chain
+  // source -> hpf -> lpf -> drive -> [plugins] -> gain -> panner -> master
+  //                                 -> sendGain -> return
+  
+  // Rebuild chain properly
+  source.disconnect();
+  let last = source;
+  
+  // HPF
+  hpf.frequency.value = track.hpf > 0 ? 20 + track.hpf * 1000 : 20;
+  if (track.hpf > 0) {
+    last.connect(hpf);
+    last = hpf;
+  }
+  
+  // LPF
+  lpf.frequency.value = track.lpf < 1 ? 20000 * track.lpf : 20000;
+  if (track.lpf < 1) {
+    last.connect(lpf);
+    last = lpf;
+  }
+  
+  // Drive
+  if (track.drive > 0) {
+    drive.curve = makeDistortionCurve(track.drive * 10);
+    last.connect(drive);
+    last = drive;
+  }
+  
+  // Plugins already applied above if we used applyPlugins, but we need to integrate
+  // Actually applyPlugins creates its own chain. Let's rebuild properly.
+  
+  // Simpler: just use the chain we built
+  // But we need to store nodes for real-time updates
+  
+  // Let's use a cleaner approach: build everything fresh
+  const chain = buildTrackChain(trackIdx, source);
+  
+  // Connect to master and return
+  chain.output.connect(state.masterGain);
+  if (chain.sendOut && state.sendReturnNodes) {
+    chain.sendOut.connect(state.sendReturnNodes.delay);
+    chain.sendOut.connect(state.sendReturnNodes.reverb);
+  }
+  
+  // Start
+  const actualStart = Math.max(ctx.currentTime, startTime);
+  source.start(actualStart);
+  
+  // Store for management
+  state.live.activeSources.set(key, {
+    source,
+    nodes: chain,
+    trackIdx,
+    sceneIdx,
+    startTime: actualStart,
+    duration: bufferDuration,
+    loop: source.loop
+  });
+  state.live.playingSlots.add(key);
+  
+  // Auto-stop for non-looping clips
+  if (!source.loop) {
+    const stopDelay = (actualStart + bufferDuration - ctx.currentTime) * 1000;
+    setTimeout(() => {
+      if (state.live.playingSlots.has(key)) {
+        stopClip(trackIdx, sceneIdx);
+      }
+    }, stopDelay + 50);
+  }
+  
+  renderLiveGrid();
+}
+
+function buildTrackChain(trackIdx, sourceNode) {
+  const ctx = state.audioCtx;
+  const track = state.live.tracks[trackIdx];
+  
+  let node = sourceNode;
+  
+  // HPF
+  if (track.hpf > 0) {
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 20 + track.hpf * 1000;
+    node.connect(f);
+    node = f;
+  }
+  
+  // LPF
+  if (track.lpf < 1) {
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 20000 * track.lpf;
+    node.connect(f);
+    node = f;
+  }
+  
+  // Drive
+  if (track.drive > 0) {
+    const ws = ctx.createWaveShaper();
+    ws.curve = makeDistortionCurve(track.drive * 10);
+    node.connect(ws);
+    node = ws;
+  }
+  
+  // Plugins
+  node = applyPlugins(trackIdx, node);
+  
+  // Volume
+  const gain = ctx.createGain();
+  gain.gain.value = track.mute ? 0 : track.volume;
+  node.connect(gain);
+  node = gain;
+  
+  // Pan
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = track.pan;
+  node.connect(panner);
+  
+  // Send tap (pre-fader from gain input)
+  const sendGain = ctx.createGain();
+  sendGain.gain.value = track.send * 0.5;
+  // We need to tap before the gain, so let's split at the plugin output
+  // Actually we already passed it. Let's rebuild with a splitter.
+  
+  // For simplicity, we'll create a parallel send from the gain output
+  // This is post-fader but acceptable for demo
+  const sendOut = ctx.createGain();
+  sendOut.gain.value = track.send * 0.5;
+  panner.connect(sendOut);
+  
+  return { output: panner, sendOut };
+}
+
+function stopClip(trackIdx, sceneIdx) {
+  const key = `${trackIdx}-${sceneIdx}`;
+  if (!state.live.playingSlots.has(key)) return;
+  
+  const entry = state.live.activeSources.get(key);
+  if (entry && entry.source) {
+    try {
+      entry.source.stop();
+      entry.source.disconnect();
+    } catch(e) {}
+    
+    // Disconnect all nodes to prevent memory leaks
+    if (entry.nodes) {
+      disconnectNodeChain(entry.nodes.output);
+      if (entry.nodes.sendOut) disconnectNodeChain(entry.nodes.sendOut);
+    }
+    
+    state.live.activeSources.delete(key);
+  }
+  
+  state.live.playingSlots.delete(key);
+  renderLiveGrid();
+}
+
+function disconnectNodeChain(node) {
+  try { node.disconnect(); } catch(e) {}
+  // Note: we can't traverse the graph easily, but disconnect() removes all connections
+}
+
+function stopAll() {
+  state.playing = false;
+  document.getElementById('playBtn').textContent = '▶ PLAY';
+  
+  // Stop all clips
+  const keys = Array.from(state.live.playingSlots);
+  for (const key of keys) {
+    const [t, s] = key.split('-').map(Number);
+    stopClip(t, s);
+  }
+  
+  // Stop arrangement playback
+  if (state.schedulerTimer) {
+    clearInterval(state.schedulerTimer);
+    state.schedulerTimer = null;
+  }
+  
+  // Suspend context
+  if (state.audioCtx && state.audioCtx.state === 'running') {
+    state.audioCtx.suspend();
+  }
+  
+  state.currentBeat = 0;
+  updatePlayhead();
+  renderLiveGrid();
+  showToast('All stopped');
+}
+
+function updateTrackAudioNodes(trackIdx) {
+  // Update parameters for currently playing clips on this track
+  for (const [key, entry] of state.live.activeSources) {
+    if (entry.trackIdx === trackIdx && entry.nodes) {
+      const track = state.live.tracks[trackIdx];
+      // We can't easily update the chain without rebuilding, 
+      // but we can update gain and pan if we stored references
+      // For now, changes apply on next launch
+    }
+  }
+}
+
+// ===================================================================
+//  TRANSPORT & ARRANGEMENT SCHEDULER (Fixed)
+// ===================================================================
+function togglePlay() {
+  if (state.playing) {
+    // Stop
+    stopAll();
+  } else {
+    // Start
+    state.playing = true;
+    document.getElementById('playBtn').textContent = '⏸ PAUSE';
+    initAudio();
+    state.currentBeat = 0;
+    state.playStartTime = state.audioCtx.currentTime;
+    scheduleArrangement();
+    showToast('Transport running');
+  }
+}
+
+function scheduleArrangement() {
+  if (!state.playing) return;
+  
+  // Clear any existing timer
+  if (state.schedulerTimer) {
+    clearInterval(state.schedulerTimer);
+  }
+  
+  const startTime = state.audioCtx.currentTime;
+  const startBeat = state.currentBeat;
+  
+  state.schedulerTimer = setInterval(() => {
+    if (!state.playing) return;
+    
+    const elapsed = state.audioCtx.currentTime - startTime;
+    state.currentBeat = startBeat + (elapsed * state.bpm / 60);
+    updatePlayhead();
+    
+    // Schedule clips that should start now or in near future
+    const lookAheadBeats = 0.5; // Look ahead 0.5 beats
+    const nowBeat = state.currentBeat;
+    
+    for (const clip of state.arrangement.clips) {
+      // Check if clip starts within this window and hasn't been scheduled
+      if (!clip._scheduled && clip.startBeat >= nowBeat && clip.startBeat < nowBeat + lookAheadBeats) {
+        clip._scheduled = true;
+        scheduleArrangementClip(clip);
+      }
+      // Reset flag if we've passed the clip (for looping/restart)
+      if (clip._scheduled && nowBeat > clip.startBeat + clip.duration + 1) {
+        clip._scheduled = false;
+      }
+    }
+  }, 50); // 50ms update interval
+}
+
+function scheduleArrangementClip(clip) {
+  const file = state.files.find(f => f.id == clip.fileId);
+  if (!file || !file.buffer) return;
+  
+  const ctx = state.audioCtx;
+  const track = state.live.tracks[clip.trackIdx];
+  const beatDuration = 60 / state.bpm;
+  const startTimeSec = clip.startBeat * beatDuration + state.playStartTime;
+  
+  const source = ctx.createBufferSource();
+  source.buffer = file.buffer;
+  
+  // Build chain
+  const chain = buildTrackChain(clip.trackIdx, source);
+  chain.output.connect(state.masterGain);
+  if (chain.sendOut && state.sendReturnNodes) {
+    chain.sendOut.connect(state.sendReturnNodes.delay);
+    chain.sendOut.connect(state.sendReturnNodes.reverb);
+  }
+  
+  // Calculate actual start relative to now
+  const when = Math.max(0, startTimeSec - ctx.currentTime);
+  source.start(ctx.currentTime + when);
+  
+  // Auto-stop
+  const durationSec = clip.duration * beatDuration;
+  setTimeout(() => {
+    try { source.stop(); } catch(e) {}
+    disconnectNodeChain(chain.output);
+    if (chain.sendOut) disconnectNodeChain(chain.sendOut);
+  }, (when + durationSec) * 1000 + 100);
+}
+
+// ===================================================================
+//  ARRANGEMENT TIMELINE
+// ===================================================================
+function renderArrangement() {
+  const lanes = document.getElementById('trackLanes');
+  lanes.innerHTML = '';
+  
+  for (let t = 0; t < 8; t++) {
+    const lane = document.createElement('div');
+    lane.className = 'track-lane-edit';
+    lane.dataset.trackIdx = t;
+    
+    const label = document.createElement('div');
+    label.className = 'lane-label';
+    label.textContent = state.live.tracks[t].name;
+    lane.appendChild(label);
+    
+    // Draw clips
+    const clips = state.arrangement.clips.filter(c => c.trackIdx === t);
+    for (const clip of clips) {
+      const block = document.createElement('div');
+      block.className = 'clip-block';
+      const leftPct = (clip.startBeat / 32) * 100; // 32 beats visible
+      const widthPct = (clip.duration / 32) * 100;
+      block.style.left = leftPct + '%';
+      block.style.width = Math.max(widthPct, 1) + '%';
+      block.textContent = clip.name;
+      block.dataset.clipId = clip.id;
+      block.draggable = true;
+      
+      block.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('clipId', clip.id);
+        block.classList.add('dragging');
+      });
+      block.addEventListener('dragend', () => block.classList.remove('dragging'));
+      
+      const del = document.createElement('span');
+      del.className = 'delete-clip';
+      del.textContent = '✕';
+      del.onclick = (e) => { e.stopPropagation(); removeArrangementClip(clip.id); };
+      block.appendChild(del);
+      
+      lane.appendChild(block);
+    }
+    
+    // Drop handlers
+    lane.addEventListener('dragover', (e) => e.preventDefault());
+    lane.addEventListener('drop', (e) => handleArrangementDrop(e, t));
+    
+    // Select track
+    lane.addEventListener('click', () => {
+      state.selectedTrackIdx = t;
+      renderPluginRack();
+    });
+    
+    lanes.appendChild(lane);
+  }
+  
+  updatePlayhead();
+}
+
+function handleArrangementDrop(e, trackIdx) {
+  e.preventDefault();
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const percent = x / rect.width;
+  const beat = percent * 32; // 32 beats visible
+  
+  const clipId = e.dataTransfer.getData('clipId');
+  if (clipId) {
+    // Move existing clip
+    const clip = state.arrangement.clips.find(c => c.id == clipId);
+    if (clip) {
+      clip.startBeat = Math.round(beat * 4) / 4;
+      clip.trackIdx = trackIdx;
+      renderArrangement();
+      autoSave();
+    }
+    return;
+  }
+  
+  const fileId = e.dataTransfer.getData('fileId');
+  if (fileId) {
+    const file = state.files.find(f => f.id == fileId);
+    if (file) {
+      const durationBeats = file.duration ? (file.duration * state.bpm / 60) : 4;
+      const clip = {
+        id: Date.now() + Math.random(),
+        trackIdx,
+        fileId: file.id,
+        startBeat: Math.round(beat * 4) / 4,
+        duration: durationBeats,
+        name: file.name
+      };
+      state.arrangement.clips.push(clip);
+      renderArrangement();
+      autoSave();
+      showToast('Added to arrangement');
+    }
+  }
+}
+
+function removeArrangementClip(id) {
+  state.arrangement.clips = state.arrangement.clips.filter(c => c.id !== id);
+  renderArrangement();
+  autoSave();
+}
+
+function updatePlayhead() {
+  const playhead = document.getElementById('playhead');
+  const pct = ((state.currentBeat % 32) / 32) * 100;
+  playhead.style.left = pct + '%';
+}
+
+// ===================================================================
+//  BOUNCE (Fixed with proper error handling)
+// ===================================================================
+async function bounceSession() {
+  const ctx = state.audioCtx;
+  if (!ctx) return showToast('No audio context');
+  
+  // Calculate total duration
+  const maxBeat = state.arrangement.clips.reduce((max, c) => Math.max(max, c.startBeat + c.duration), 0);
+  if (maxBeat === 0) return showToast('No arrangement clips to bounce');
+  
+  const durationSec = maxBeat * 60 / state.bpm;
+  showToast('Bouncing... please wait');
+  
+  try {
+    const offlineCtx = new OfflineAudioContext(2, Math.ceil(durationSec * ctx.sampleRate), ctx.sampleRate);
+    const master = offlineCtx.createGain();
+    master.gain.value = 0.8;
+    master.connect(offlineCtx.destination);
+    
+    // Build send return in offline context
+    const delay = offlineCtx.createDelay(2.0);
+    delay.delayTime.value = 0.375;
+    const feedback = offlineCtx.createGain();
+    feedback.gain.value = 0.3;
+    const reverb = offlineCtx.createConvolver();
+    const irLength = Math.floor(offlineCtx.sampleRate * 1.5);
+    const impulse = offlineCtx.createBuffer(2, irLength, offlineCtx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < irLength; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLength, 2);
+      }
+    }
+    reverb.buffer = impulse;
+    const returnGain = offlineCtx.createGain();
+    returnGain.gain.value = 0.4;
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(reverb);
+    reverb.connect(returnGain);
+    returnGain.connect(master);
+    
+    // Render each track
+    for (let t = 0; t < 8; t++) {
+      const track = state.live.tracks[t];
+      const clips = state.arrangement.clips.filter(c => c.trackIdx === t);
+      for (const clip of clips) {
+        const file = state.files.find(f => f.id == clip.fileId);
+        if (!file || !file.buffer) continue;
+        
+        const source = offlineCtx.createBufferSource();
+        source.buffer = file.buffer;
+        
+        // Build chain manually for offline
+        let node = source;
+        
+        if (track.hpf > 0) {
+          const f = offlineCtx.createBiquadFilter();
+          f.type = 'highpass';
+          f.frequency.value = 20 + track.hpf * 1000;
+          node.connect(f);
+          node = f;
+        }
+        if (track.lpf < 1) {
+          const f = offlineCtx.createBiquadFilter();
+          f.type = 'lowpass';
+          f.frequency.value = 20000 * track.lpf;
+          node.connect(f);
+          node = f;
+        }
+        if (track.drive > 0) {
+          const ws = offlineCtx.createWaveShaper();
+          ws.curve = makeDistortionCurve(track.drive * 10);
+          node.connect(ws);
+          node = ws;
+        }
+        
+        // Apply plugins
+        node = applyPlugins(t, node, offlineCtx);
+        
+        const gain = offlineCtx.createGain();
+        gain.gain.value = track.mute ? 0 : track.volume;
+        node.connect(gain);
+        node = gain;
+        
+        const panner = offlineCtx.createStereoPanner();
+        panner.pan.value = track.pan;
+        node.connect(panner);
+        
+        // Send
+        if (track.send > 0) {
+          const sendGain = offlineCtx.createGain();
+          sendGain.gain.value = track.send * 0.5;
+          panner.connect(sendGain);
+          sendGain.connect(delay);
+          sendGain.connect(reverb);
+        }
+        
+        panner.connect(master);
+        
+        const startSec = clip.startBeat * 60 / state.bpm;
+        source.start(startSec);
+      }
+    }
+    
+    const rendered = await offlineCtx.startRendering();
+    downloadWav(rendered, 'crisp_bounce.wav');
+    showToast('Bounce complete!');
+  } catch (err) {
+    console.error('Bounce failed:', err);
+    showToast('Bounce failed: ' + err.message);
+  }
+}
+
+async function bounceStems() {
+  const ctx = state.audioCtx;
+  if (!ctx) return showToast('No audio context');
+  
+  const maxBeat = state.arrangement.clips.reduce((max, c) => Math.max(max, c.startBeat + c.duration), 0);
+  if (maxBeat === 0) return showToast('No arrangement clips');
+  
+  const durationSec = maxBeat * 60 / state.bpm;
+  showToast('Bouncing stems...');
+  
+  try {
+    for (let t = 0; t < 8; t++) {
+      const clips = state.arrangement.clips.filter(c => c.trackIdx === t);
+      if (clips.length === 0) continue;
+      
+      const offlineCtx = new OfflineAudioContext(2, Math.ceil(durationSec * ctx.sampleRate), ctx.sampleRate);
+      const master = offlineCtx.createGain();
+      master.gain.value = 0.8;
+      master.connect(offlineCtx.destination);
+      
+      const track = state.live.tracks[t];
+      
+      for (const clip of clips) {
+        const file = state.files.find(f => f.id == clip.fileId);
+        if (!file || !file.buffer) continue;
+        
+        const source = offlineCtx.createBufferSource();
+        source.buffer = file.buffer;
+        
+        let node = source;
+        if (track.hpf > 0) {
+          const f = offlineCtx.createBiquadFilter();
+          f.type = 'highpass';
+          f.frequency.value = 20 + track.hpf * 1000;
+          node.connect(f);
+          node = f;
+        }
+        if (track.lpf < 1) {
+          const f = offlineCtx.createBiquadFilter();
+          f.type = 'lowpass';
+          f.frequency.value = 20000 * track.lpf;
+          node.connect(f);
+          node = f;
+        }
+        if (track.drive > 0) {
+          const ws = offlineCtx.createWaveShaper();
+          ws.curve = makeDistortionCurve(track.drive * 10);
+          node.connect(ws);
+          node = ws;
+        }
+        
+        node = applyPlugins(t, node, offlineCtx);
+        
+        const gain = offlineCtx.createGain();
+        gain.gain.value = track.mute ? 0 : track.volume;
+        node.connect(gain);
+        node = gain;
+        
+        const panner = offlineCtx.createStereoPanner();
+        panner.pan.value = track.pan;
+        node.connect(panner);
+        panner.connect(master);
+        
+        const startSec = clip.startBeat * 60 / state.bpm;
+        source.start(startSec);
+      }
+      
+      const rendered = await offlineCtx.startRendering();
+      downloadWav(rendered, `stem_track${t + 1}_${state.live.tracks[t].name.replace(/\s+/g, '_')}.wav`);
+    }
+    showToast('All stems bounced!');
+  } catch (err) {
+    console.error('Stem bounce failed:', err);
+    showToast('Stem bounce failed: ' + err.message);
+  }
+}
+
+function downloadWav(buffer, filename) {
+  const wav = bufferToWav(buffer);
+  const blob = new Blob([wav], { type: 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function bufferToWav(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const sr = buffer.sampleRate;
+  const len = buffer.length;
+  const data = [];
+  for (let ch = 0; ch < numCh; ch++) data.push(buffer.getChannelData(ch));
+  const samples = len;
+  const dataLen = samples * numCh * 2;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buf);
+  
+  function writeString(offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataLen, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sr, true);
+  view.setUint32(28, sr * numCh * 2, true);
+  view.setUint16(32, numCh * 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataLen, true);
+  
+  let offset = 44;
+  for (let i = 0; i < samples; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      const sample = Math.max(-1, Math.min(1, data[ch][i]));
+      const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+  return buf;
+}
+
+// ===================================================================
+//  UI RENDERING
+// ===================================================================
+function renderLiveGrid() {
+  const grid = document.getElementById('sessionGrid');
+  grid.innerHTML = '';
+  
+  // Scene launch column
+  const sceneCol = document.createElement('div');
+  sceneCol.style.cssText = 'display:flex; flex-direction:column; min-width:50px;';
+  sceneCol.innerHTML = '<div style="height:40px;"></div><div style="height:100px;"></div>';
+  for (let s = 0; s < 8; s++) {
+    const btn = document.createElement('div');
+    btn.className = 'scene-col-header';
+    btn.textContent = s + 1;
+    btn.onclick = () => launchScene(s);
+    sceneCol.appendChild(btn);
+  }
+  grid.appendChild(sceneCol);
+  
+  state.live.tracks.forEach((track, t) => {
+    const lane = document.createElement('div');
+    lane.className = 'track-lane';
+    
+    const header = document.createElement('div');
+    header.className = 'track-header';
+    header.innerHTML = `<span>${track.name}</span><span style="color:var(--text-dim);">⬇</span>`;
+    lane.appendChild(header);
+    
+    const controls = document.createElement('div');
+    controls.className = 'track-controls';
+    controls.innerHTML = `
+      <div class="track-control-row"><label>Vol</label><input type="range" class="slider" min="0" max="1" step="0.01" value="${track.volume}" oninput="updateTrackParam(${t}, 'volume', this.value)"></div>
+      <div class="track-control-row"><label>Pan</label><input type="range" class="slider" min="-1" max="1" step="0.01" value="${track.pan}" oninput="updateTrackParam(${t}, 'pan', this.value)"></div>
+      <div class="track-control-row"><label>HPF</label><input type="range" class="slider" min="0" max="1" step="0.01" value="${track.hpf}" oninput="updateTrackParam(${t}, 'hpf', this.value)"></div>
+      <div class="track-control-row"><label>LPF</label><input type="range" class="slider" min="0" max="1" step="0.01" value="${track.lpf}" oninput="updateTrackParam(${t}, 'lpf', this.value)"></div>
+    `;
+    lane.appendChild(controls);
+    
+    const scenes = document.createElement('div');
+    scenes.className = 'scenes';
+    track.clips.forEach((clip, s) => {
+      const slot = document.createElement('div');
+      slot.className = 'scene-slot';
+      const key = `${t}-${s}`;
+      if (state.live.playingSlots.has(key)) slot.classList.add('playing');
+      
+      if (clip) {
+        slot.classList.add('active');
+        slot.innerHTML = `<span class="slot-name">${clip.name}</span>`;
+        slot.onclick = () => {
+          if (state.live.playingSlots.has(key)) stopClip(t, s);
+          else launchClip(t, s);
+        };
+        slot.ondrop = (e) => {
+          e.preventDefault();
+          const fileId = e.dataTransfer.getData('fileId');
+          if (fileId) {
+            const file = state.files.find(f => f.id == fileId);
+            if (file) {
+              track.clips[s] = { file, name: file.name };
+              renderLiveGrid();
+              autoSave();
+            }
+          }
+        };
+        slot.ondragover = (e) => e.preventDefault();
+        
+        // Right-click to send to arrangement
+        slot.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (clip && clip.file) {
+            const arrClip = {
+              id: Date.now() + Math.random(),
+              trackIdx: t,
+              fileId: clip.file.id,
+              startBeat: Math.round(state.currentBeat * 4) / 4,
+              duration: (clip.file.duration || 4) * state.bpm / 60,
+              name: clip.name
+            };
+            state.arrangement.clips.push(arrClip);
+            renderArrangement();
+            autoSave();
+            showToast('Sent to arrangement');
+          }
+        });
+      } else {
+        slot.innerHTML = `<span class="slot-name" style="opacity:0.3;">Empty</span>`;
+        slot.ondrop = (e) => {
+          e.preventDefault();
+          const fileId = e.dataTransfer.getData('fileId');
+          if (fileId) {
+            const file = state.files.find(f => f.id == fileId);
+            if (file) {
+              track.clips[s] = { file, name: file.name };
+              renderLiveGrid();
+              autoSave();
+            }
+          }
+        };
+        slot.ondragover = (e) => e.preventDefault();
+      }
+      scenes.appendChild(slot);
+    });
+    lane.appendChild(scenes);
+    grid.appendChild(lane);
+  });
+  
+  renderMixer();
+}
+
+function renderMixer() {
+  const mixer = document.getElementById('mixer');
+  mixer.innerHTML = '';
+  state.live.tracks.forEach((track, t) => {
+    const ch = document.createElement('div');
+    ch.className = 'mixer-channel';
+    ch.innerHTML = `
+      <div class="mixer-label">${track.name}</div>
+      <input type="range" class="mixer-fader" min="0" max="1" step="0.01" value="${track.volume}" oninput="updateTrackParam(${t}, 'volume', this.value)">
+      <div class="mixer-knob" onclick="toggleMute(${t})" style="${track.mute ? 'border-color:var(--danger);color:var(--danger);' : ''}">M</div>
+      <div class="mixer-knob" onclick="toggleSolo(${t})" style="${track.solo ? 'border-color:var(--accent);color:var(--accent);' : ''}">S</div>
+      <div class="track-control-row" style="width:100%;"><label>Drv</label><input type="range" class="slider" min="0" max="1" step="0.01" value="${track.drive}" oninput="updateTrackParam(${t}, 'drive', this.value)"></div>
+      <div class="track-control-row" style="width:100%;"><label>Snd</label><input type="range" class="slider" min="0" max="1" step="0.01" value="${track.send}" oninput="updateTrackParam(${t}, 'send', this.value)"></div>
+    `;
+    mixer.appendChild(ch);
+  });
+}
+
+function updateTrackParam(trackIdx, param, value) {
+  state.live.tracks[trackIdx][param] = parseFloat(value);
+  autoSave();
+}
+
+function toggleMute(t) {
+  state.live.tracks[t].mute = !state.live.tracks[t].mute;
+  renderMixer();
+  autoSave();
+}
+
+function toggleSolo(t) {
+  state.live.tracks[t].solo = !state.live.tracks[t].solo;
+  renderMixer();
+  autoSave();
+}
+
+function launchScene(sceneIdx) {
+  state.live.tracks.forEach((track, t) => {
+    if (track.clips[sceneIdx]) launchClip(t, sceneIdx);
+  });
+  showToast(`Launched Scene ${sceneIdx + 1}`);
+}
+
+// ===================================================================
+//  INSTRUMENT GENERATOR
+// ===================================================================
+function addInstrument(type) {
+  const acidTrack = 2;
+  const sceneIdx = 0;
+  const ctx = getAudioCtx();
+  const duration = 4;
+  const sampleRate = ctx.sampleRate;
+  const buffer = ctx.createBuffer(2, duration * sampleRate, sampleRate);
+  
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sampleRate;
+      let freq = 55;
+      if (type === 'acid') freq = 55 * Math.pow(2, Math.floor(t * 2) % 4 / 12);
+      if (type === 'tekno') freq = 40 + (t % 0.25) * 200;
+      if (type === 'schranz') freq = 30 + Math.random() * 100;
+      if (type === 'slowrave') freq = 55 * Math.pow(2, Math.sin(t * 0.5) * 0.5);
+      if (type === 'mental') freq = 60 * (1 + Math.floor(t * 4) % 3);
+      
+      const saw = (t * freq) % 1;
+      const filter = Math.sin(t * Math.PI * 0.5);
+      data[i] = (saw * 2 - 1) * 0.3 * filter;
+    }
+  }
+  
+  const fileData = {
+    id: Date.now() + Math.random(),
+    name: `${type}.loop`,
+    size: 0,
+    type: 'audio/wav',
+    buffer: buffer,
+    duration: duration,
+    sampleRate: sampleRate,
+    channels: 2
+  };
+  
+  state.files.push(fileData);
+  state.live.tracks[acidTrack].clips[sceneIdx] = { file: fileData, name: `${type}.loop` };
+  renderLiveGrid();
+  autoSave();
+  showToast(`${type} parked on Acid · Scene 1`);
+}
+
+// ===================================================================
+//  FILE HANDLING (Fixed decode)
+// ===================================================================
+function handleFiles(fileList) {
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const maxSize = isMobile ? 400 * 1024 * 1024 : 1.5 * 1024 * 1024 * 1024;
+  
+  Array.from(fileList).forEach(async (file) => {
+    if (file.size > maxSize) {
+      showModal('File Too Large', `${file.name} is ${formatBytes(file.size)}. Limit: ${formatBytes(maxSize)}`);
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const arrayBuffer = e.target.result;
+      const result = await decodeAudioBuffer(arrayBuffer, file.name);
+      
+      if (result.success) {
+        const fileData = {
+          id: Date.now() + Math.random(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          buffer: result.buffer,
+          duration: result.buffer.duration,
+          sampleRate: result.buffer.sampleRate,
+          channels: result.buffer.numberOfChannels
+        };
+        state.files.push(fileData);
+        renderFile(fileData);
+        autoSave();
+      } else {
+        console.error('Decode failed:', result.error);
+        showToast(`Decode failed: ${file.name} - ${result.error}`);
+      }
+    };
+    reader.onerror = () => showToast(`Failed to read: ${file.name}`);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function renderFile(fileData) {
+  const container = document.getElementById('deskFiles');
+  const card = document.createElement('div');
+  card.className = 'file-card';
+  card.draggable = true;
+  card.dataset.fileId = fileData.id;
+  
+  const statusColor = fileData.buffer ? 'var(--accent)' : 'var(--warning)';
+  const statusText = fileData.buffer ? 'OK' : 'FAIL';
+  
+  card.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <strong style="font-size:12px;">${fileData.name}</strong>
+      <span class="badge" style="background:${statusColor}22; color:${statusColor};">${statusText}</span>
+    </div>
+    <div class="waveform"><canvas id="wave-${fileData.id}"></canvas></div>
+    <div class="file-meta">
+      <span>${fileData.duration ? fileData.duration.toFixed(2) + 's' : '—'}</span>
+      <span>${(fileData.sampleRate / 1000).toFixed(1)}kHz</span>
+      <span>${fileData.channels}ch</span>
+      <span>${formatBytes(fileData.size)}</span>
+    </div>
+    <div class="file-actions">
+      <button class="btn" onclick="playFile(${fileData.id})" ${!fileData.buffer ? 'disabled' : ''}>▶ Play</button>
+      <button class="btn" onclick="sendToLive(${fileData.id})" ${!fileData.buffer ? 'disabled' : ''}>→ Live</button>
+      <button class="btn danger" onclick="deleteFile(${fileData.id})">✕</button>
+    </div>
+  `;
+  container.appendChild(card);
+  
+  if (fileData.buffer) {
+    setTimeout(() => drawSimpleWaveform(fileData), 100);
+  }
+}
+
+function drawSimpleWaveform(fileData) {
+  const canvas = document.getElementById(`wave-${fileData.id}`);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const buffer = fileData.buffer;
+  const data = buffer.getChannelData(0);
+  const width = canvas.offsetWidth || 200;
+  const height = canvas.offsetHeight || 50;
+  canvas.width = width;
+  canvas.height = height;
+  
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = '#00ffcc';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  
+  const step = Math.ceil(data.length / width);
+  for (let i = 0; i < width; i++) {
+    let min = 1, max = -1;
+    for (let j = 0; j < step; j++) {
+      const sample = data[i * step + j] || 0;
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+    const y1 = (1 + min) * 0.5 * height;
+    const y2 = (1 + max) * 0.5 * height;
+    ctx.moveTo(i, y1);
+    ctx.lineTo(i, y2);
+  }
+  ctx.stroke();
+}
+
+function playFile(id) {
+  const file = state.files.find(f => f.id === id);
+  if (!file || !file.buffer) {
+    showToast('File not decoded');
+    return;
+  }
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = file.buffer;
+  source.connect(state.masterGain);
+  source.start();
+}
+
+function sendToLive(id) {
+  const file = state.files.find(f => f.id === id);
+  if (!file) return;
+  
+  for (let t = 0; t < state.live.tracks.length; t++) {
+    for (let s = 0; s < 8; s++) {
+      if (!state.live.tracks[t].clips[s]) {
+        state.live.tracks[t].clips[s] = { file, name: file.name };
+        renderLiveGrid();
+        switchView('live');
+        showToast(`Sent to Track ${t + 1}, Scene ${s + 1}`);
+        autoSave();
+        return;
+      }
+    }
+  }
+  showToast('No empty slots!');
+}
+
+function deleteFile(id) {
+  state.files = state.files.filter(f => f.id !== id);
+  // Remove from arrangement
+  state.arrangement.clips = state.arrangement.clips.filter(c => {
+    const file = state.files.find(f => f.id == c.fileId);
+    return !!file;
+  });
+  document.getElementById('deskFiles').innerHTML = '';
+  state.files.forEach(renderFile);
+  renderArrangement();
+  autoSave();
+}
+
+// ===================================================================
+//  MIDI LEARN (Fixed)
+// ===================================================================
+function toggleMidiLearn() {
+  state.midiLearn = !state.midiLearn;
+  const btn = document.getElementById('midiLearnBtn');
+  btn.classList.toggle('midi-learn-active', state.midiLearn);
+  
+  if (state.midiLearn) {
+    requestMIDIAccess();
+    showToast('MIDI Learn ON - move a control');
+  } else {
+    showToast('MIDI Learn OFF');
+  }
+}
+
+async function requestMIDIAccess() {
+  try {
+    if (!navigator.requestMIDIAccess) {
+      showToast('Web MIDI API not supported');
+      state.midiLearn = false;
+      document.getElementById('midiLearnBtn').classList.remove('midi-learn-active');
+      return;
+    }
+    const access = await navigator.requestMIDIAccess({ sysex: false });
+    for (const input of access.inputs.values()) {
+      input.onmidimessage = handleMIDIMessage;
+    }
+  } catch (e) {
+    showToast('MIDI access denied');
+    state.midiLearn = false;
+    document.getElementById('midiLearnBtn').classList.remove('midi-learn-active');
+  }
+}
+
+function handleMIDIMessage(event) {
+  if (!state.midiLearn) return;
+  const [status, data1, data2] = event.data;
+  
+  // Control Change
+  if ((status & 0xF0) === 0xB0) {
+    const cc = data1;
+    const value = data2 / 127;
+    
+    // Map to selected track volume for now
+    const track = state.live.tracks[state.selectedTrackIdx];
+    if (track) {
+      track.volume = value;
+      renderLiveGrid();
+      renderMixer();
+      autoSave();
+      showToast(`CC${cc} → Track ${state.selectedTrackIdx + 1} Vol`);
+    }
+  }
+  
+  // Note On - could map to clip launch
+  if ((status & 0xF0) === 0x90 && data2 > 0) {
+    const note = data1;
+    // Map note to scene launch
+    const sceneIdx = note % 8;
+    launchScene(sceneIdx);
+    showToast(`Note ${note} → Scene ${sceneIdx + 1}`);
+  }
+}
+
+// ===================================================================
+//  PERSISTENCE
+// ===================================================================
+function autoSave() {
+  clearTimeout(state.saveTimer);
+  state.saveTimer = setTimeout(() => {
+    try {
+      const data = {
+        bpm: state.bpm,
+        files: state.files.map(f => ({
+          id: f.id,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          duration: f.duration,
+          sampleRate: f.sampleRate,
+          channels: f.channels
+        })),
+        live: {
+          tracks: state.live.tracks.map(t => ({
+            ...t,
+            clips: t.clips.map(c => c ? { fileId: c.file.id, name: c.name } : null),
+            plugins: t.plugins
+          }))
+        },
+        arrangement: state.arrangement.clips,
+        midiMappings: state.midiMappings
+      };
+      localStorage.setItem('crisp_session', JSON.stringify(data));
+    } catch (e) {
+      console.warn('Auto-save failed:', e);
+    }
+  }, 500);
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem('crisp_session');
+    if (!raw) return;
+    
+    const data = JSON.parse(raw);
+    state.bpm = data.bpm || 128;
+    document.getElementById('bpmDisplay').textContent = state.bpm.toFixed(1);
+    
+    // Note: we can't restore buffers, only metadata
+    showToast('Session metadata loaded (re-import files for audio)');
+  } catch (e) {
+    console.warn('Load failed:', e);
+  }
+}
+
+function clearSession() {
+  if (!confirm('Clear all clips, files, and arrangement?')) return;
+  
+  state.files = [];
+  state.live.tracks.forEach(t => {
+    t.clips.fill(null);
+    t.plugins = [];
+  });
+  state.live.playingSlots.clear();
+  state.live.activeSources.clear();
+  state.arrangement.clips = [];
+  
+  document.getElementById('deskFiles').innerHTML = '';
+  renderLiveGrid();
+  renderArrangement();
+  renderPluginRack();
+  autoSave();
+  showToast('Session cleared');
+}
+
+// ===================================================================
+//  UI HELPERS
+// ===================================================================
+function switchView(view) {
+  state.view = view;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(view + 'View').classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  
+  if (view === 'track') {
+    renderArrangement();
+    renderPluginRack();
+  }
+}
+
+function toggleChat() {
+  document.getElementById('chatPanel').classList.toggle('open');
+}
+
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  
+  const msgs = document.getElementById('chatMessages');
+  msgs.innerHTML += `<div class="chat-msg user">${escapeHtml(msg)}</div>`;
+  input.value = '';
+  msgs.scrollTop = msgs.scrollHeight;
+  
+  setTimeout(() => {
+    const response = generateEngineerResponse(msg);
+    msgs.innerHTML += `<div class="chat-msg bot">${response}</div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+  }, 600);
+}
+
+function generateEngineerResponse(msg) {
+  const lower = msg.toLowerCase();
+  if (lower.includes('mcp') || lower.includes('model context')) {
+    return `<strong>MCP Knowledge:</strong><br>Model Context Protocol enables CRISP to query external AI models.<br>Recipes: ES-1 12‑bit/32kHz mono, E2S stereo/44.1kHz.<br>Convert: Live → ES‑1: fold mono, bit‑reduce.<br>ES‑1 → Live: upsample, stereo pad.`;
+  }
+  if (lower.includes('es-1') || lower.includes('e2s')) {
+    return `<strong>Sampling:</strong><br>• ES-1: 12‑bit @ 32kHz, mono. Max 95 samples.<br>• E2S: 44.1kHz stereo, filter envelope per sample.<br>• Transfer: SmartMedia (ES-1) or SD (E2S).<br>• CRISP auto‑converts on drop.`;
+  }
+  if (lower.includes('live') || lower.includes('ableton')) {
+    return `<strong>Live Mode:</strong><br>8 tracks × 8 scenes, quantized launch.<br>Each slot holds audio clip.<br>Track FX: HPF, LPF, drive, pan, send.<br>Bounce to WAV.`;
+  }
+  return `<strong>CRISP Engineer:</strong><br>I know the codebase. Ask about:<br>• ES‑1 / E2S workflows<br>• Live session structure<br>• File limits & conversion<br>• MCP recipes<br>(Local knowledge only)`;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function makeDistortionCurve(amount) {
+  const samples = 44100;
+  const curve = new Float32Array(samples);
+  const deg = Math.PI / 180;
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / samples - 1;
+    curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
+function showToast(msg) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
+function showModal(title, content) {
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modalContent');
+  modal.innerHTML = `<h2>${title}</h2><p>${content}</p><button class="btn accent" onclick="closeModal()" style="margin-top:16px;">Close</button>`;
+  overlay.classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function tapTempo() {
+  const now = Date.now();
+  state.lastTap = state.lastTap || [];
+  state.lastTap.push(now);
+  if (state.lastTap.length > 4) state.lastTap.shift();
+  
+  if (state.lastTap.length >= 2) {
+    const intervals = [];
+    for (let i = 1; i < state.lastTap.length; i++) {
+      intervals.push(state.lastTap[i] - state.lastTap[i-1]);
+    }
+    const avg = intervals.reduce((a, b) => a + b) / intervals.length;
+    state.bpm = Math.min(Math.max(Math.round(60000 / avg), 20), 999);
+    document.getElementById('bpmDisplay').textContent = state.bpm.toFixed(1);
+    autoSave();
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === ' ') {
+    e.preventDefault();
+    togglePlay();
+  }
+  if (e.key === 'Escape') {
+    closeModal();
+    document.getElementById('chatPanel').classList.remove('open');
+  }
+});
+
+// ===================================================================
+//  INIT
+// ===================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  loadSession();
+  renderLiveGrid();
+  renderArrangement();
+  renderPluginRack();
+  
+  // Drag from desk
+  document.addEventListener('dragstart', (e) => {
+    const card = e.target.closest('.file-card');
+    if (card) {
+      const fileId = card.dataset.fileId;
+      if (fileId) e.dataTransfer.setData('fileId', fileId);
+    }
+  });
+  
+  // Desk drop zone
+  const dropzone = document.getElementById('deskDropzone');
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+  });
+  
+  // Prevent accidental navigation
+  window.addEventListener('beforeunload', (e) => {
+    if (state.files.length > 0) {
+      autoSave();
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+});
+</script>
+</body>
+</html>
