@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Maximize2, Minimize2, Settings2 } from "lucide-react";
+import { CrispPanel } from "./crisp/CrispPanel";
 import {
   AudioEngine,
   createEngineSnapshotFromTemplate,
@@ -413,6 +414,7 @@ function FooterAudioVisualizer({ audio }: { audio: AudioEngine }) {
 }
 
 export function App() {
+  const [crispOpen, setCrispOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef(new AudioEngine());
   const routerRef = useRef(new ControlRouter());
@@ -4245,6 +4247,33 @@ export function App() {
           </div>
         ))}
       </div>
+      <button
+        onClick={() => setCrispOpen(true)}
+        style={{
+          position: "fixed",
+          bottom: 84,
+          right: 18,
+          zIndex: 8999,
+          width: 54,
+          height: 54,
+          borderRadius: "50%",
+          border: "1px solid rgba(126,231,135,0.5)",
+          background: "rgba(13,17,23,0.92)",
+          color: "#7ee787",
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+          boxShadow: "0 4px 18px rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        title="CRISP — drop a track, get a new loop"
+      >
+        CRISP
+      </button>
+      {crispOpen && <CrispPanel onClose={() => setCrispOpen(false)} />}
+
     </main>
   );
 }

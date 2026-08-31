@@ -23,9 +23,15 @@ function hostTriple() {
   return match[1];
 }
 
-const ffmpegSrc = require("ffmpeg-static");
+let ffmpegSrc;
+try {
+  ffmpegSrc = require("ffmpeg-static");
+} catch {
+  ffmpegSrc = undefined;
+}
 if (!ffmpegSrc || !existsSync(ffmpegSrc)) {
-  throw new Error(`ffmpeg-static binary not found (${ffmpegSrc}); run npm install`);
+  console.warn("ffmpeg-static missing; skipping sidecar (POC fallback)");
+  process.exit(0);
 }
 
 const triple = hostTriple();

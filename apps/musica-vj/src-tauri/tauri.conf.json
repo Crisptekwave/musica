@@ -38,8 +38,11 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/ffmpeg"],
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "nsis",
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
