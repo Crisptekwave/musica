@@ -1,0 +1,21 @@
+# systemd *user* unit. Installed by deploy/install.sh into ~/.config/systemd/user/.
+# Runs as the account that owns ~/.hermes (the kanban DB is mode 700 there).
+[Unit]
+Description=TEKNO CONTROL live dashboard (port 3020, Tailscale only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=%h/.config/tekno-panel/env
+ExecStart=@APP_DIR@/.venv/bin/python -m tekno_panel.server
+Restart=always
+RestartSec=5
+# stay out of the way of ACE-Step and the lane workers
+Nice=10
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
