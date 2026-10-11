@@ -228,7 +228,7 @@ The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` 
   local Qwen gets no tools. `tag` measures each library sample, lets CLAP (`laion/larger_clap_music`, CPU) listen to it,
   and asks Qwen for role, tags and a note; the runner keeps only tags the measurements or CLAP back up, lets a path hint
   ("Kicks/") and then a confident CLAP role decide the role, and writes `tekno_machine/night/tags.json` plus a CLAP index
-  (`night/clap/`) for `qwen_night.py find "distorted gabber kick"` / `find --like <path>`. Python: `/mnt/agent-data/models/venv`.
+  (`night/clap/`) for `qwen_night.py find "distorted gabber kick"` / `find --like <path>`. Python: `/mnt/agent-data/apps/models/venv`.
   `digest` posts a <= 5 line summary plus the raw facts of the last 24 h to agent-mail thread `morning-report` as qwen.
   Both report as `qwen-night` in the agent roster. The phone Bots tab shows one creature per roster agent.
 - **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
