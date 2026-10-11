@@ -9,7 +9,7 @@ from tekno_panel import kanban
     ("[dry-001] STUDY", "dry-001", "Plan"),
     ("[e2e-001] SONG-PLAN", "e2e-001", "Plan"),
     ("[e2e-001] SOUND-SWAP", "e2e-001", "Sound Swap"),
-    ("[e2e-001] MASTER-SCORE", "e2e-001", "Master"),
+    ("[e2e-001] MASTER-SCORE", "e2e-001", "Score"),  # blocks on the Score gate
     ("[acid-7] GENERATE: take 2 at 168 BPM", "acid-7", "Generate"),
     ("[x] Variation", "x", "Variation"),
     ("no brackets here", None, None),
@@ -55,7 +55,8 @@ def test_build_tracks(board_db):
     tracks = {t["slug"]: t for t in kanban.build_tracks(kanban.read_board(board_db))}
     dry = tracks["dry-001"]
     assert dry["lane"] == "Score" and dry["state"] == "failed"
-    assert dry["last_sendback"]["to"] == "Filter" and dry["loops"] == 1
+    # "would route" is a dry-run suggestion: shown, but not counted as a loop
+    assert dry["last_sendback"]["to"] == "Filter" and dry["last_sendback"]["hypothetical"] and dry["loops"] == 0
     assert "would route" in dry["current_task"]["last_error"]  # blocked by hand: comment is the reason
     e2e = tracks["e2e-001"]
     assert e2e["lane"] == "Plan" and e2e["state"] == "working" and 0 < e2e["progress"] < 10

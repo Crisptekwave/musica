@@ -182,3 +182,22 @@ def test_build_comment():
     assert review.build_comment("approve", "a\n\nb") == "APPROVED via TEKNO CONTROL: a b"
     with pytest.raises(review.ReviewError):
         review.build_comment("reject", "")
+
+
+def test_handoff_media_is_confined(client, settings):
+    h = settings.handoff_path / "e2e-001_tekno_165_Fmin"
+    (h / "stems").mkdir(parents=True)
+    (h / "master.wav").write_bytes(b"RIFF" + b"\0" * 16)
+    (h / "score.json").write_text("{}")
+    assert client.get("/handoff/e2e-001_tekno_165_Fmin/master.wav").status_code == 401
+    login(client)
+    assert client.get("/handoff/e2e-001_tekno_165_Fmin/master.wav").content.startswith(b"RIFF")
+    for bad in ("/handoff/e2e-001_tekno_165_Fmin/score.json", "/handoff/e2e-001_tekno_165_Fmin/../../tools/x.mp3",
+                "/handoff/..%2F..%2Fetc/passwd", "/handoff/.hidden/master.wav"):
+        assert client.get(bad).status_code == 404, bad
+
+
+def test_state_has_live_fields(client):
+    s = login(client).get("/api/state").json()
+    assert {"history", "handoff", "processes", "freshness"} <= set(s)
+    assert s["chat"]["threads"] and s["chat"]["threads"][0]["id"].startswith("card-")

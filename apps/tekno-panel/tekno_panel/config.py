@@ -30,7 +30,8 @@ LANE_ALIASES = {
     "VARIATION": "Variation", "VAR": "Variation",
     "MIX": "Mix",
     "POLISH": "Polish",
-    "MASTER": "Master", "MASTER-SCORE": "Master",
+    # MASTER-SCORE runs polish + master + score_card; it blocks on the Score gate, so it sits in Score.
+    "MASTER": "Master", "MASTER-SCORE": "Score",
     "SCORE": "Score", "QC": "Score",
     "REVIEW": "Review",
     "DONE": "Done",
@@ -42,6 +43,27 @@ FOLDER_LANES = [
     ("swap", "Sound Swap"), ("edit", "Edit"), ("filter", "Filter"), ("var", "Variation"),
     ("mix", "Mix"), ("polish", "Master"), ("score", "Score"), ("review", "Review"),
 ]
+
+
+# Lane scripts in <machine>/scripts -> UI lane(s). lane_dsp.py picks its lane from the mode argument.
+SCRIPT_LANES = {
+    "song_plan": ["Plan"], "ace_sections": ["Generate"], "ace_job": ["Generate"], "regen_exact": ["Generate"],
+    "assemble": ["Edit"], "stems": ["Stems"], "sound_swap": ["Sound Swap"], "variation": ["Variation"],
+    "mix_stems": ["Mix"], "score_card": ["Score"], "fair_card": ["Score"], "ref_compare": ["Score"],
+    "handoff": ["Done"],
+}
+LANE_DSP_MODES = {"edit": ["Edit"], "filter": ["Filter"], "mix": ["Mix"], "polish": ["Polish", "Master"]}
+# Hermes kanban worker profiles (hermes -p tekno-<lane> ... "work kanban task t_x") -> lane.
+PROFILE_LANES = {
+    "tekno-study": "Plan", "tekno-plan": "Plan", "tekno-generate": "Generate", "tekno-stems": "Stems",
+    "tekno-swap": "Sound Swap", "tekno-edit": "Edit", "tekno-filter": "Filter", "tekno-variation": "Variation",
+    "tekno-mix": "Mix", "tekno-polish": "Polish", "tekno-master": "Master", "tekno-score": "Score",
+}
+# run_e2e.sh step headers ("=== stems 11:39:41") -> lane.
+RUN_STEP_LANES = {
+    "study": "Plan", "plan": "Plan", "gen": "Generate", "edit": "Edit", "stems": "Stems", "swap": "Sound Swap",
+    "var": "Variation", "filter": "Filter", "mix": "Mix", "polish": "Polish", "master": "Master", "score": "Score",
+}
 
 
 def _env(name: str, default: str) -> str:
@@ -77,6 +99,12 @@ class Settings:
     disk_warn_gb: float = 20.0
     ace_url: str = "http://127.0.0.1:8011"
     ace_log: Path = Path("/mnt/agent-data/ace-step/logs/acestep.log")
+    lora_log: Path = Path("/mnt/agent-data/ace-step/logs/lora_default.log")
+    # ACE runs as user units of another account: their lifecycle is read from the system journal
+    # (journalctl USER_UNIT=...), their program output from the log files above.
+    ace_units: tuple = ("acestep-api.service", "acestep-lora.service")
+    proc_root: Path = Path("/proc")
+    cgroup_root: Path = Path("/sys/fs/cgroup")
     agent_mail_url: str = "http://100.84.117.126:8765/mcp/"
     agent_mail_project: str = "hermes-music"
     tracks_per_day_cap: int = 6
@@ -92,15 +120,24 @@ class Settings:
         return self.cards_dir or (self.machine_root / "cards")
 
     @property
+    def handoff_path(self) -> Path:
+        return self.machine_root / "handoff"
+
+    @property
+    def scripts_path(self) -> Path:
+        return self.machine_root / "scripts"
+
+    @property
     def reference_path(self) -> Path:
         return self.reference_audio or (self.machine_root / "tools" / "SIFRES_remake_v02_in.mp3")
 
 
 DEFAULT_SERVICES = [
     # name shown in the UI, how to check it. Checks are tried in order; first conclusive wins.
-    {"name": "acestep-api", "unit": "acestep-api", "http": "http://127.0.0.1:8011/health",
-     "process": "acestep --server-name"},
-    {"name": "acestep-lora", "unit": "acestep-lora", "lora_probe": "http://127.0.0.1:8011/monitoring/summary"},
+    {"name": "acestep-api", "unit": "acestep-api", "cgroup": "acestep-api.service",
+     "http": "http://127.0.0.1:8011/health", "process": "acestep --server-name"},
+    {"name": "acestep-lora", "journal": "acestep-lora.service", "lora_log": True,
+     "lora_probe": "http://127.0.0.1:8011/monitoring/summary"},
     {"name": "hermes-gateway", "unit": "hermes-gateway", "process": "hermes gateway"},
     {"name": "litellm", "unit": "aihub-litellm", "http": "http://127.0.0.1:4000/health/liveliness",
      "process": "litellm"},
@@ -120,6 +157,8 @@ def load_settings() -> Settings:
         disk_warn_gb=float(_env("TEKNO_DISK_WARN_GB", "20")),
         ace_url=_env("TEKNO_ACE_URL", "http://127.0.0.1:8011"),
         ace_log=Path(_env("TEKNO_ACE_LOG", "/mnt/agent-data/ace-step/logs/acestep.log")),
+        lora_log=Path(_env("TEKNO_LORA_LOG", "/mnt/agent-data/ace-step/logs/lora_default.log")),
+        ace_units=tuple(u.strip() for u in _env("TEKNO_ACE_UNITS", "acestep-api.service,acestep-lora.service").split(",") if u.strip()),
         agent_mail_url=_env("TEKNO_AGENT_MAIL_URL", "http://100.84.117.126:8765/mcp/"),
         agent_mail_project=_env("TEKNO_AGENT_MAIL_PROJECT", "hermes-music"),
         tracks_per_day_cap=int(_env("TEKNO_TRACKS_PER_DAY_CAP", "6")),

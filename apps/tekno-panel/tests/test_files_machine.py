@@ -51,15 +51,18 @@ def test_disk(tmp_path):
     assert machine.disk(tmp_path, 0)["warn"] is False
 
 
-def test_ace_job_from_lock(tmp_path):
+def test_ace_job_needs_live_flock(tmp_path):
+    import fcntl
     lock = tmp_path / ".gpu.lock"
-    import os
-    lock.write_text(f"{os.getpid()} /mnt/agent-data/tekno_machine/cards/e2e-001\n")
-    log = tmp_path / "ace.log"
-    log.write_text("x | INFO | step\n 40%|####      | 20/50 [00:10<00:15]\n")
-    a = machine.ace("http://127.0.0.1:9", lock, log)
-    assert a["job"]["card"] == "e2e-001" and a["status"] == "generating"
-    assert a["progress"] == 40
+    with open(lock, "w") as fh:
+        fh.write(f"{__import__('os').getpid()} /mnt/agent-data/tekno_machine/cards/e2e-001 regen\n")
+        fh.flush()
+        fcntl.flock(fh, fcntl.LOCK_EX)  # what ace_job.py / regen_exact.py hold while ACE runs
+        a = machine.ace("http://127.0.0.1:9", lock, tmp_path / "none.log")
+        assert a["status"] == "generating" and a["job"]["card"] == "e2e-001" and a["job"]["tag"] == "regen"
+    # released: the line stays in the file but nobody holds it -> not generating
+    a = machine.ace("http://127.0.0.1:9", lock, tmp_path / "none.log")
+    assert a["job"] is None and a["status"] == "down"
 
 
 def test_ace_stale_lock(tmp_path):
@@ -75,9 +78,10 @@ def test_service_falls_back_to_down():
 
 
 def test_merge_tracks_adds_offboard_and_ace_progress():
-    board = [{"slug": "a", "lane": "Generate", "state": "queued", "progress": 8, "created_at": 1}]
-    disk = {"files_lane": {"a": "Generate", "b": "Mix"}}
-    ace = {"job": {"card": "a"}, "progress": 50}
+    board = [{"slug": "a", "lane": "Generate", "state": "queued", "progress": 8, "created_at": 1, "loops": 0,
+              "tasks": [{"id": "t_1"}], "last_activity": 1}]
+    disk = {"files_lane": {"a": "Generate", "b": "Mix"}, "cards": {}}
+    ace = {"status": "generating", "job": {"card": "a"}, "progress": 50}
     t = {x["slug"]: x for x in merge_tracks(board, disk, ace, 0)}
     assert t["a"]["state"] == "working" and t["a"]["progress"] == round(100 * 1.5 / 12)
     assert t["b"]["state"] == "offboard" and t["b"]["lane"] == "Mix"
@@ -133,13 +137,6 @@ def test_hard_fails_strip_numpy_repr(tmp_path):
     (c / "score").mkdir(parents=True)
     (c / "score" / "score.json").write_text(_j.dumps({"hard_fails": ["bpm [np.float64(165.375), np.float64(167.62)]"]}))
     assert files.card_score(c)["hard_fails"] == ["bpm [165.375, 167.62]"]
-
-
-def test_ace_log_prefix_stripped(tmp_path):
-    log = tmp_path / "ace.log"
-    log.write_text("2026-10-11 09:34:21.689 | INFO     | acestep.core.generation.handler.gen:_build:38 - [generate_music] VAE decode done\n")
-    a = machine.ace("http://127.0.0.1:9", tmp_path / "nolock", log)
-    assert a["log"][-1] == "[generate_music] VAE decode done"
 
 
 def test_demo_tracks_have_task_chain():

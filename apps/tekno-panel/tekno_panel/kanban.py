@@ -15,11 +15,10 @@ from pathlib import Path
 from .config import LANE_ALIASES, LANES
 
 TITLE_RE = re.compile(r"^\s*\[(?P<slug>[^\]]+)\]\s*(?P<lane>[A-Za-z][A-Za-z0-9 _-]*?)\s*(?::\s*(?P<rest>.*))?$")
-# "... -> would route: Filter (reason)", "route to Mix: reason", "send back to Polish - reason"
-ROUTE_RE = re.compile(
-    r"(?:route[sd]?|send(?:ing)?\s+back|sent\s+back|back)\s*(?:->|to|:)?\s*:?\s*(?P<lane>[A-Za-z][A-Za-z -]+?)\s*(?:[(:\-–]\s*(?P<reason>.+))?$",
-    re.I,
-)
+# Routing markers in Score/QC notes: "-> Mix", "-> would route: Filter (...)", "route to Mix: ...", "send back to Edit - ..."
+MARK_RE = re.compile(
+    r"->|→|\b(?:would\s+route(?:\s+to)?|route[sd]?(?:\s+back)?\s+to|sen[dt]\s+back\s+to|go(?:es)?\s+back\s+to|back\s+to)\b\s*:?",
+    re.I)
 FAIL_HINT_RE = re.compile(r"\b(FAIL|NO-GO|BLOCKED|request-changes|changes requested|reject)", re.I)
 
 ACTIVE = {"running"}
@@ -45,29 +44,106 @@ def parse_title(title: str) -> tuple[str | None, str | None, str]:
     return m.group("slug").strip(), normalize_lane(m.group("lane")), (m.group("rest") or "").strip()
 
 
-def parse_sendback(text: str, from_lane: str | None) -> dict | None:
-    """Detect a "sent back to <lane>" note in a comment/run summary."""
-    if not text or (not FAIL_HINT_RE.search(text) and "route" not in text.lower()):
-        return None
-    for line in text.splitlines():
-        m = ROUTE_RE.search(line)
-        if not m:
-            continue
-        words = m.group("lane").strip().split()
-        to_lane = None
-        # try longest prefix first ("Sound Swap ..." vs "Filter ...")
-        for n in range(min(3, len(words)), 0, -1):
-            to_lane = normalize_lane(" ".join(words[:n]))
-            if to_lane:
-                rest = " ".join(words[n:])
+def _mask_parens(text: str) -> tuple[str, list[str]]:
+    """Replace top-level (...) groups with \x00<n>\x00 so commas/slashes inside them don't split items."""
+    out, groups, depth, buf = [], [], 0, []
+    for ch in text:
+        if ch == "(":
+            if depth == 0:
+                buf = []
+            else:
+                buf.append(ch)
+            depth += 1
+        elif ch == ")" and depth:
+            depth -= 1
+            if depth == 0:
+                out.append(f"\x00{len(groups)}\x00")
+                groups.append("".join(buf))
+            else:
+                buf.append(ch)
+        elif depth:
+            buf.append(ch)
+        else:
+            out.append(ch)
+    if depth:  # unbalanced: keep the rest as plain text
+        out.append("(" + "".join(buf))
+    return "".join(out), groups
+
+
+def _unmask(text: str, groups: list[str]) -> str:
+    return re.sub(r"\x00(\d+)\x00", lambda m: f"({groups[int(m.group(1))]})", text)
+
+
+def _clause_before(text: str) -> str:
+    """Last sentence-ish fragment of ``text`` (split on '. ' / '; ' outside parentheses)."""
+    masked, groups = _mask_parens(text)
+    frag = re.split(r"(?:\.\s+|;\s*|->|→)", masked)[-1]
+    frag = re.sub(r"^\s*(BLOCKED|FAIL(ED)?|NO-GO)\s*:\s*", "", frag.strip(), flags=re.I)
+    return _unmask(frag, groups).strip(" :-–")
+
+
+def _lane_prefix(item: str) -> tuple[list[str], str]:
+    """'Edit/Generate (why)' -> (['Edit', 'Generate'], '(why)'). Lanes may be one to three words."""
+    lanes, rest = [], item.strip()
+    while rest:
+        words = re.split(r"(\s+|/)", rest)
+        found = None
+        tokens = [w for w in words if w and not w.isspace() and w != "/"]
+        for n in range(min(3, len(tokens)), 0, -1):
+            lane = normalize_lane(" ".join(t.strip(":,.-") for t in tokens[:n]))
+            if lane:
+                found = (lane, n)
                 break
-        if not to_lane:
+        if not found:
+            break
+        lanes.append(found[0])
+        # drop the matched words from the front
+        consumed, k = 0, 0
+        while consumed < found[1] and k < len(words):
+            if words[k] and not words[k].isspace() and words[k] != "/":
+                consumed += 1
+            k += 1
+        rest = "".join(words[k:]).lstrip()
+        if rest.startswith("/"):
+            rest = rest[1:].lstrip()
             continue
-        reason = (m.group("reason") or rest or "").strip().strip("()").strip()
-        if not reason:
-            reason = text.split("->")[0].strip()
-        return {"from": from_lane, "to": to_lane, "reason": reason[:300]}
-    return None
+        break
+    return lanes, rest
+
+
+def parse_routes(text: str, from_lane: str | None) -> list[dict]:
+    """All "sent back to <lane>" routes in a Score/QC note. 'would route' marks a dry run (not a real loop)."""
+    if not text or (not FAIL_HINT_RE.search(text) and "route" not in text.lower()):
+        return []
+    out: list[dict] = []
+    for line in text.splitlines():
+        marks = list(MARK_RE.finditer(line))
+        for i, m in enumerate(marks):
+            seg = line[m.end(): marks[i + 1].start() if i + 1 < len(marks) else len(line)]
+            masked, groups = _mask_parens(seg)
+            masked = re.split(r"\.\s+|\.$|;", masked)[0]  # the routing ends at the sentence end
+            before = _clause_before(line[: m.start()])
+            for item in masked.split(","):
+                lanes, rest = _lane_prefix(item)
+                if not lanes:
+                    break
+                specific = _unmask(rest, groups).strip().strip(":-– ").strip()
+                if specific.startswith("(") and specific.endswith(")"):
+                    specific = specific[1:-1].strip()
+                if specific and before and re.search(r"\d", before):
+                    reason = f"{before} — {specific}"
+                else:
+                    reason = specific or before
+                for ln in lanes:
+                    out.append({"from": from_lane, "to": ln, "reason": reason[:300],
+                                "hypothetical": "would" in m.group(0).lower()})
+    return out
+
+
+def parse_sendback(text: str, from_lane: str | None) -> dict | None:
+    """First route in a note (kept for callers that only want one)."""
+    routes = parse_routes(text, from_lane)
+    return routes[0] if routes else None
 
 
 @dataclass
@@ -143,7 +219,7 @@ def read_board(db: Path) -> dict:
 def _task_state(status: str) -> str:
     if status in ACTIVE:
         return "working"
-    if status == "blocked":
+    if status in ("blocked", "failed"):
         return "failed"
     if status == "review":
         return "review"
@@ -182,15 +258,21 @@ def build_tracks(board: dict, now: float | None = None) -> list[dict]:
                 loops += 1
             if t.lane:
                 seen.append(t.lane)
-        sendbacks = []
+        sendbacks, seen_keys, routed_texts = [], set(), set()
         for t in ts:
-            texts = [c["body"] for c in t.comments] + [r.get("summary") or "" for r in t.runs]
-            for txt in texts:
-                sb = parse_sendback(txt, t.lane)
-                if sb and sb not in sendbacks:
-                    sb["task_id"] = t.id
-                    sendbacks.append(sb)
-        loops = max(loops, len(sendbacks))
+            texts = [(c["body"], c["at"]) for c in t.comments] + \
+                    [(r.get("summary") or "", r.get("ended_at") or r.get("started_at")) for r in t.runs]
+            for txt, at in texts:
+                for sb in parse_routes(txt, t.lane):
+                    key = (sb["to"], sb["reason"])  # a comment and its run summary often repeat the same note
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    sendbacks.append({**sb, "task_id": t.id, "at": at})
+                    if not sb["hypothetical"]:
+                        routed_texts.add(txt.strip())
+        loops = max(loops, len(routed_texts))
+        real = [x for x in sendbacks if not x["hypothetical"]]
         state = "done" if lane == "Done" else ("review" if lane == "Review" else _task_state(current.status))
         lane_idx = LANES.index(lane) if lane in LANES else 0
         frac = 0.5 if state == "working" else 0.0
@@ -206,7 +288,7 @@ def build_tracks(board: dict, now: float | None = None) -> list[dict]:
             "progress": progress,
             "loops": loops,
             "sendbacks": sendbacks,
-            "last_sendback": sendbacks[-1] if sendbacks else None,
+            "last_sendback": (real or sendbacks)[-1] if sendbacks else None,
             "current_task": {"id": current.id, "title": current.title, "status": current.status,
                               "assignee": current.assignee,
                               # blocked by hand (no worker error): the latest comment says why
@@ -237,9 +319,12 @@ def lane_activity(board: dict, now: float | None = None, handoff_window: int = 2
         if t.status == "running":
             L["state"] = "working"
             L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee}
-        elif t.status == "blocked" and L["state"] != "working":
+        elif t.status in ("blocked", "failed") and L["state"] != "working":
             L["state"] = "failed"
-            L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee, "error": t.last_error}
+            # blocked by hand (no worker error): the latest comment says why
+            why = t.last_error or (t.comments[-1]["body"] if t.comments else None) or \
+                (t.runs[-1].get("summary") if t.runs else None)
+            L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee, "error": (why or "")[:300] or None}
         elif t.status == "review" and L["state"] == "idle":
             L["state"] = "waiting"
             L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee}

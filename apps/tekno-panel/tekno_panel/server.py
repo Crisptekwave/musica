@@ -153,6 +153,14 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         p = safe_file(s.cards_path, f"{card}/{path}")
         return FileResponse(p, headers={"Cache-Control": "private, max-age=60"})
 
+    @app.get("/handoff/{project}/{path:path}")
+    async def handoff_media(project: str, path: str, request: Request):
+        need_auth(request)
+        if "/" in project or project.startswith("."):
+            raise HTTPException(404, "not found")
+        p = safe_file(s.handoff_path, f"{project}/{path}")
+        return FileResponse(p, headers={"Cache-Control": "private, max-age=60"})
+
     @app.get("/media-ref")
     async def media_ref(request: Request):
         need_auth(request)
