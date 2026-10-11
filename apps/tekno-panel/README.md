@@ -55,7 +55,7 @@ Run as **kingzmodzmail**, the account that owns `~/.hermes`. That kanban DB is m
 the `Gebruiker` account can't read it.
 
 ```bash
-cd /mnt/agent-data/tekno-panel      # or wherever this folder lives
+cd /mnt/agent-data/apps/tekno-panel   # installed here on the VM (kingzmodzmail owns /mnt/agent-data/apps)
 deploy/install.sh
 ```
 

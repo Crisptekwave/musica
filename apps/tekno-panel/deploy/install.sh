@@ -8,6 +8,8 @@ CONF="$HOME/.config/tekno-panel"
 UNIT_DIR="$HOME/.config/systemd/user"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mkdir -p "$CONF" "$UNIT_DIR"; chmod 700 "$CONF"
+# keep package caches off the (small) root disk when the big data disk is there
+[ -d /mnt/agent-data/uv-cache ] && export UV_CACHE_DIR="${UV_CACHE_DIR:-/mnt/agent-data/uv-cache}" PIP_CACHE_DIR="${PIP_CACHE_DIR:-/mnt/agent-data/uv-cache/pip}"
 
 if command -v uv >/dev/null; then
   [ -d "$APP_DIR/.venv" ] || uv venv -q --python python3 "$APP_DIR/.venv"
