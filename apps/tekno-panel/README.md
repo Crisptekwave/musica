@@ -209,3 +209,20 @@ TEKNO_DEMO=1 TEKNO_STATE_DIR=/tmp/tp .venv/bin/python -m tekno_panel.server   # 
 The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` (phone screens + socket), `js/desktop.js` + `desktop.css` (desktop room),
 `js/bots.js` (creatures), `js/player.js` (Web Audio), `js/charts.js`. Icons come from
 `tools/make_icons.py` (Pillow).
+
+## v3: Studio, palette, local model, fallback, agents
+
+- **Studio** (`#/studio`, phone: Machine tab): view-only live frames of the REAPER instances (one per producer, each on its own
+  Xvfb display :100-:199). `tools/reaper_snap.py` (user service `tekno-reaper-snap.service`) grabs one JPEG per instance with
+  ffmpeg x11grab every 2 s into `$TEKNO_DATA_DIR/reaper/<n>.jpg` and lists them in `instances.json`. It only grabs while the
+  Studio page polls (`/api/reaper` touches `reaper/viewing`; older than 30 s = idle). The panel parses each project's `.rpp`
+  read-only (tracks, items, tempo, length) and the newest WAV in the card's `out/` or `mix/`. Routes: `GET /api/reaper`,
+  `GET /reaper/frame/<100-199>.jpg` (no-store). There is no input path to REAPER.
+- **Palette** (`#/palette`): `music_library/ryan_palette/index.json` + README, filters, play button via `/palette/media/<path>`
+  (that folder only, audio extensions only). Env `TEKNO_PALETTE_DIR`.
+- **Local model / Fallback**: vLLM at `TEKNO_VLLM_URL` (default 127.0.0.1:8001), the `tekno_machine/fallback` folder (mode,
+  heartbeat, notes, runs). One new control action `fallback.mode` (`auto` | `off` only; passcode, audit; written by the helper).
+- **Agents**: `tekno-agent start|step|done <name>` (tools/agent_status.py) writes `tekno_machine/agents/<name>.json`; the
+  overview shows the roster (working agent silent for 20 min = amber, finished ones hide after 24 h).
+- **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
+- ACE-Step probes are off unless `TEKNO_ACE_ENABLED=1`.

@@ -65,7 +65,7 @@
   // ---- ready-made actions
   const A = {
     pause: () => ask({ action: "machine.pause", title: "Pause the machine?", confirm: "Pause",
-      body: "Writes <b>PAUSED</b>. New ACE jobs refuse to start; work already running finishes.", note: { label: "Reason", key: "reason", placeholder: "e.g. tweaking the LoRA" } }),
+      body: "Writes <b>PAUSED</b>. New lane jobs refuse to start; work already running finishes.", note: { label: "Reason", key: "reason", placeholder: "e.g. tweaking the LoRA" } }),
     resume: () => ask({ action: "machine.resume", title: "Resume the machine?", confirm: "Resume", body: "Removes PAUSED, also one the watchdog wrote (check disk first)." }),
     note: (task, slug) => ask({ action: "card.note", params: { task_id: task }, title: `Note on ${slug || task}`, confirm: "Add note",
       body: `Adds a comment on kanban task <span class="mono">${esc(task)}</span>.`, note: { label: "Note", required: true, placeholder: "e.g. regen drop2 with a new seed" } }),
@@ -77,6 +77,9 @@
       body: `Starts <span class="mono">run_e2e.sh ${esc(slug)} ${esc(step)}</span> as the lane user. Output goes to the card's next runN.log; the bots light up as each step runs.` }),
     stop: slug => ask({ action: "lane.stop", params: { card: slug }, title: `Stop ${slug}?`, confirm: "Stop", danger: true,
       body: "Sends SIGTERM to the lane scripts and run_e2e.sh running for this card. Half-written files stay as they are." }),
+    fbmode: mode => ask({ action: "fallback.mode", params: { mode }, title: `Fallback ${mode === "off" ? "off" : "on (auto)"}?`, confirm: "Set", danger: true,
+      body: mode === "off" ? "Writes <b>off</b> to fallback/MODE: the local Qwen will not continue hand-off notes when Claude is out of its limit."
+        : "Writes <b>auto</b> to fallback/MODE: when Claude has been quiet for a while, the local Qwen continues open hand-off notes (allowlisted tools only)." }),
     restart: svc => ask({ action: "service.restart", params: { service: svc }, title: `Restart ${svc}?`, confirm: "Restart", danger: true,
       body: svc.startsWith("acestep") ? "ACE takes ~4 minutes to load models again; a take in progress is lost." : "The service restarts now." }),
   };
@@ -92,7 +95,7 @@
     const running = snap.processes || [];
     const busy = new Set(running.map(p => p.card).filter(Boolean));
     const svcState = Object.fromEntries((snap.health?.services || []).map(s => [s.name, s.status]));
-    return `<div class="ctl-sec"><div class="ctl-row"><div><b>Machine</b><div class="muted ctl-small">${m.paused ? `PAUSED ${esc(m.reason || "")}` : "running: lanes may start ACE jobs"}</div></div>
+    return `<div class="ctl-sec"><div class="ctl-row"><div><b>Machine</b><div class="muted ctl-small">${m.paused ? `PAUSED ${esc(m.reason || "")}` : "running: lanes may start"}</div></div>
         ${m.paused ? `<button class="btn approve" data-ctl="resume">Resume</button>` : `<button class="btn reject" data-ctl="pause">Pause</button>`}</div></div>
       <div class="ctl-sec"><b>Run the pipeline</b><div class="ctl-row ctl-form">
         <select id="ctl-card" aria-label="Card">${cards.map(s => `<option>${esc(s)}</option>`).join("")}</select>
@@ -100,6 +103,8 @@
         <button class="btn approve" data-ctl="run" ${cards.length ? "" : "disabled"}>Run ▶</button></div>
         <div class="muted ctl-small">run_e2e.sh &lt;card&gt; &lt;step&gt; runs every step from there to Master + Score.</div>
         ${[...busy].map(s => `<div class="ctl-row"><span><span class="sd up" style="display:inline-block;width:8px;height:8px;border-radius:50%"></span> <b class="mono">${esc(s)}</b> <span class="muted">${esc(running.filter(p => p.card === s).map(p => p.script).join(", "))}</span></span><button class="btn reject" data-ctl="stop" data-card="${esc(s)}">Stop</button></div>`).join("")}</div>
+      ${snap.fallback?.present ? `<div class="ctl-sec"><div class="ctl-row"><div><b>Claude-limit fallback</b><div class="muted ctl-small">mode <b>${esc(snap.fallback.mode || "?")}</b>${snap.fallback.mode === "force" ? " (set on the machine)" : ""}: local Qwen continues hand-off notes</div></div>
+        ${snap.fallback.mode === "off" ? `<button class="btn approve" data-ctl="fbmode" data-mode="auto">Turn on</button>` : `<button class="btn reject" data-ctl="fbmode" data-mode="off">Turn off</button>`}</div></div>` : ""}
       <div class="ctl-sec"><b>Services</b>${(c.services || []).map(s => `<div class="ctl-row"><span><span class="sd ${esc(svcState[s] || "idle")}" style="display:inline-block;width:8px;height:8px;border-radius:50%"></span> ${esc(s)}</span><button class="ghost sm" data-ctl="restart" data-svc="${esc(s)}">Restart</button></div>`).join("")}</div>`;
   }
 
@@ -115,6 +120,7 @@
       const b = e.target.closest("[data-ctl]"); if (!b) return;
       const k = b.dataset.ctl;
       if (k === "run") { const card = b.dataset.card || container.querySelector("#ctl-card")?.value; const step = b.dataset.step || container.querySelector("#ctl-step")?.value; if (card && step) A.run(card, step); }
+      else if (k === "fbmode") A.fbmode(b.dataset.mode);
       else if (k === "stop") A.stop(b.dataset.card);
       else if (k === "restart") A.restart(b.dataset.svc);
       else if (k === "note" || k === "unblock" || k === "block") A[k](b.dataset.task, b.dataset.card);

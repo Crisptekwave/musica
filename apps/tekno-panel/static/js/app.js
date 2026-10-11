@@ -79,6 +79,7 @@
   // ---------------- navigation ----------------
   function show(screen) {
     S.screen = screen; store.set("tekno-screen", screen);
+    if (screen === "health") V3.studio.start($("#studio-m"), { single: true }); else V3.studio.stop();  // frames only while looked at
     document.querySelectorAll(".screen").forEach(el => el.classList.toggle("active", el.id === "s-" + screen));
     document.querySelectorAll("#tabbar button").forEach(b => b.classList.toggle("active", b.dataset.screen === screen));
     if (screen === "bots") bots.start(); else bots.stop();
@@ -120,6 +121,9 @@
     if (S.screen === "health") renderHealth(snap);
     renderChat(snap);
     renderBellM(snap);
+    const ag = $("#agents-m"), agHtml = V3.agentsHtml(snap.agents);
+    if (ag.dataset.html !== agHtml) { ag.dataset.html = agHtml; ag.innerHTML = agHtml; }
+    ag.classList.toggle("hidden", !(snap.agents || []).length);
     const m = snap.machine || {};
     $("#paused-banner").classList.toggle("hidden", !m.paused);
     if (m.paused) $("#paused-banner").textContent = `⏸ Machine paused: ${m.reason || ""}. New ACE jobs won't start.`;
@@ -187,7 +191,7 @@
       const moved = S.prevLanes[t.slug] && S.prevLanes[t.slug] !== t.lane;
       S.prevLanes[t.slug] = t.lane;
       const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id,
-        t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm, t.current_task?.last_error]);
+        t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm, t.current_task?.last_error, t.brief]);
       if (el.dataset.key !== key) {
         el.dataset.key = key;
         el.className = `card glass tappable state-${t.state}`;
@@ -212,7 +216,7 @@
         <button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : "";
     return `<div class="card-top"><div><div class="slug">${esc(t.slug)}</div>
-        <div class="lane-name">lane <b>${esc(t.lane)}</b>${t.current_task?.assignee ? ` · ${esc(t.current_task.assignee)}` : ""}</div>${Live.planLine(t)}</div>
+        <div class="lane-name">lane <b>${esc(t.lane)}</b>${t.current_task?.assignee ? ` · ${esc(t.current_task.assignee)}` : ""}</div>${Live.planLine(t)}${V3.chips(t)}</div>
         <div class="pills"><span class="pill ${esc(t.state)}">${esc(stateLabel)}</span>${t.loops ? `<span class="pill loop">↺ ${Number(t.loops)}</span>` : ""}</div></div>
       <div class="rail">${rail}</div>
       <div class="rail-labels"><span>Plan</span><span>Mix</span><span>Done</span></div>
@@ -392,7 +396,11 @@
     } else {
       $("#gpu-kv").innerHTML = `<div style="grid-column:1/-1" class="warn-text">${esc(g.error || "no GPU data")}</div>`;
     }
-    $("#ace-box").innerHTML = Live.aceHtml(h.ace) + Live.journalHtml(h.journal);
+    const ace = h.ace?.enabled !== false;  // ACE-Step was removed
+    $("#ace-card").classList.toggle("hidden", !ace);
+    if (ace) $("#ace-box").innerHTML = Live.aceHtml(h.ace) + Live.journalHtml(h.journal);
+    $("#local-box").innerHTML = V3.localHtml(snap);
+    $("#fb-box").innerHTML = V3.fallbackHtml(snap);
     $("#proc-box").innerHTML = Live.procsHtml(snap.processes);
     const n = h.tracks_today ?? 0, cap = h.tracks_cap || 6;
     $("#cap-box").innerHTML = `<div class="cap-big">${n}<small> / ${cap}</small></div>
