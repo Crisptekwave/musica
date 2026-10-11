@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TEKNO CONTROL</title>
+  <meta name="description" content="Live control room for the 24/7 tekno production machine">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TEKNO">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <!-- login -->
+  <section id="login" class="login hidden" aria-label="Login">
+    <div class="login-box glass">
+      <div class="logo big"><span class="logo-a">TEKNO</span><span class="logo-b">CONTROL</span></div>
+      <p class="muted">Enter passcode</p>
+      <div class="pin" id="pin" aria-live="polite"></div>
+      <div class="keypad" id="keypad"></div>
+      <p class="err" id="login-err" role="alert"></p>
+    </div>
+  </section>
+
+  <!-- app -->
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="logo"><span class="logo-a">TEKNO</span><span class="logo-b">CONTROL</span></div>
+      <div class="top-right">
+        <button class="chip mode-chip" id="mode-chip" title="Switch live / demo">LIVE</button>
+        <span class="live-dot" id="live-dot" title="connection"></span>
+      </div>
+    </header>
+    <div class="banner hidden" id="banner"></div>
+
+    <main id="screens">
+      <section class="screen active" id="s-pipeline" data-title="Pipeline">
+        <div class="lane-strip" id="lane-strip"></div>
+        <div class="cards" id="track-cards"></div>
+      </section>
+
+      <section class="screen" id="s-bots" data-title="Live bots">
+        <div class="bots-wrap glass"><canvas id="bots-canvas"></canvas></div>
+        <p class="hint">Tap a creature to see its task and log.</p>
+      </section>
+
+      <section class="screen" id="s-listen" data-title="Listen">
+        <div class="glass player">
+          <div class="now">
+            <div>
+              <div class="now-title" id="now-title">Nothing loaded</div>
+              <div class="now-sub muted" id="now-sub">Pick a take below</div>
+            </div>
+            <button class="toggle" id="follow-btn" aria-pressed="true">Follow newest</button>
+          </div>
+          <canvas id="spectrum" class="viz" height="120"></canvas>
+          <canvas id="scope" class="viz scope" height="70"></canvas>
+          <div class="meters"><div class="meter"><i id="meter-l"></i></div><div class="meter"><i id="meter-r"></i></div><span id="meter-db" class="mono">-∞ dB</span></div>
+          <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek">
+          <div class="time mono"><span id="t-cur">0:00</span><span id="t-dur">0:00</span></div>
+          <div class="transport">
+            <button class="ab" id="ab-a" aria-pressed="true">A · take</button>
+            <button class="play" id="play-btn" aria-label="Play">▶</button>
+            <button class="ab" id="ab-b" aria-pressed="false">B · SIFRES</button>
+          </div>
+        </div>
+        <div class="filter-row" id="listen-cards"></div>
+        <div class="list" id="audio-list"></div>
+      </section>
+
+      <section class="screen" id="s-scores" data-title="Scores">
+        <div class="filter-row" id="score-cards"></div>
+        <div class="glass verdict-box" id="verdict-box"></div>
+        <div class="badges" id="badges"></div>
+        <div class="glass chart-box"><h3>LUFS-I <small>target -9 ±0.5</small></h3><canvas id="ch-lufs" height="130"></canvas></div>
+        <div class="glass chart-box"><h3>True peak <small>≤ -1.0 dBTP</small></h3><canvas id="ch-tp" height="130"></canvas></div>
+        <div class="glass chart-box"><h3>Mix Judge / EarLoop <small>≥ 6.5</small></h3><canvas id="ch-judge" height="130"></canvas></div>
+      </section>
+
+      <section class="screen" id="s-health" data-title="Machine">
+        <div class="gauges">
+          <div class="glass gauge-box"><canvas id="g-util" width="160" height="160"></canvas><span>GPU util</span></div>
+          <div class="glass gauge-box"><canvas id="g-vram" width="160" height="160"></canvas><span>VRAM</span></div>
+        </div>
+        <div class="glass"><h3>GPU <small id="gpu-name"></small></h3><canvas id="ch-gpu" height="70"></canvas><div class="kv" id="gpu-kv"></div></div>
+        <div class="glass"><h3>ACE-Step</h3><div id="ace-box"></div></div>
+        <div class="glass"><h3>Tracks today</h3><div id="cap-box"></div></div>
+        <div class="glass"><h3>Disk <small id="disk-path"></small></h3><div id="disk-box"></div></div>
+        <div class="glass"><h3>Services</h3><div id="svc-box" class="svc"></div></div>
+        <div class="glass"><h3>Sources</h3><div id="src-box" class="svc"></div></div>
+        <button class="ghost" id="logout-btn">Log out</button>
+      </section>
+
+      <section class="screen" id="s-chat" data-title="Chat">
+        <div class="filter-row" id="thread-row"></div>
+        <div class="chat" id="chat"></div>
+      </section>
+    </main>
+
+    <nav class="tabbar" id="tabbar" aria-label="Screens">
+      <button data-screen="pipeline" class="active"><svg viewBox="0 0 24 24"><path d="M3 6h4v12H3zM10 6h4v8h-4zM17 6h4v5h-4z"/></svg><span>Pipeline</span></button>
+      <button data-screen="bots"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9" fill="none" stroke-width="1.6"/></svg><span>Bots</span></button>
+      <button data-screen="listen"><svg viewBox="0 0 24 24"><path d="M4 14h2v6H4zM8 9h2v11H8zM12 4h2v16h-2zM16 10h2v10h-2zM20 13h2v7h-2z"/></svg><span>Listen</span></button>
+      <button data-screen="scores"><svg viewBox="0 0 24 24"><path d="M4 19l5-6 4 3 7-9 1 1-8 11-4-3-4 5z"/></svg><span>Scores</span></button>
+      <button data-screen="health"><svg viewBox="0 0 24 24"><path d="M2 12h4l2-5 4 10 2-5h8v2h-7l-3 7-4-10-1 3H2z"/></svg><span>Machine</span></button>
+      <button data-screen="chat"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H8l-5 4z"/></svg><span>Chat</span><i class="dot hidden" id="chat-dot"></i></button>
+    </nav>
+  </div>
+
+  <!-- bottom sheet -->
+  <div class="sheet-backdrop hidden" id="sheet-backdrop"></div>
+  <div class="sheet glass" id="sheet" role="dialog" aria-modal="true"><div class="grab"></div><div id="sheet-body"></div></div>
+  <div class="toast hidden" id="toast" role="status"></div>
+
+  <audio id="audio-a" preload="metadata" crossorigin="anonymous"></audio>
+  <audio id="audio-b" preload="metadata" crossorigin="anonymous"></audio>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/bots.js"></script>
+  <script src="/static/js/player.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
