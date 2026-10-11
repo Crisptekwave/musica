@@ -293,7 +293,10 @@ def measure(path: Path) -> dict:
 
 
 def role_hint(rel: str) -> str | None:
-    low = rel.lower().replace("_", " ")
+    """Role from the folders and file name below the pack folder (a pack called "... Loops" or "Acid Techno" says
+    nothing about each file in it)."""
+    parts = Path(rel).parts
+    low = "/".join(parts[1:] if len(parts) > 1 else parts).lower().replace("_", " ")
     for pat, role in HINTS:
         if re.search(pat, low):
             return role
@@ -410,6 +413,16 @@ def ago(ts: float, now: float) -> str:
     return f"{h:.0f} h ago" if h >= 1 else f"{(now - ts) / 60:.0f} min ago"
 
 
+def job_running(name: str) -> bool:
+    for cmd in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            if f"run_job.sh\0{name}\0" in cmd.read_text(errors="replace"):
+                return True
+        except OSError:
+            pass
+    return False
+
+
 def last_line(p: Path) -> str:
     try:
         lines = [x for x in p.read_text(errors="replace").splitlines() if x.strip()]
@@ -427,7 +440,10 @@ def facts(now: float | None = None) -> list[str]:
             out.append(f"agent {a['name']} ({a.get('model') or '?'}): {st}: {a.get('step') or a.get('result') or a.get('task') or ''}")
     for log in sorted(CC_JOBS.glob("*.log")):
         if now - log.stat().st_mtime < DAY:
-            out.append(f"Claude Code job {log.stem} ({ago(log.stat().st_mtime, now)}): {last_line(log)}")
+            if job_running(log.stem):
+                out.append(f"Claude Code job {log.stem}: running (its log is written when it ends)")
+            else:
+                out.append(f"Claude Code job {log.stem} ({ago(log.stat().st_mtime, now)}): {last_line(log)}")
     for note in sorted((FB / "handoff").glob("*.md")):
         st = (re.search(r"^STATUS:\s*(\S+)", note.read_text(errors="replace"), re.M) or [None, "?"])[1]
         if st != "done":
@@ -442,13 +458,16 @@ def facts(now: float | None = None) -> list[str]:
     try:
         r = subprocess.run(["systemctl", "--user", "--failed", "--plain", "--no-legend"], capture_output=True, text=True, timeout=20)
         failed = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
-        out.append(f"failed services: {', '.join(failed)}" if failed else "failed services: none")
+        if r.returncode:
+            out.append(f"failed services: unknown (systemctl: {' '.join(r.stderr.split())[:80]})")
+        else:
+            out.append(f"failed services: {', '.join(failed)}" if failed else "failed services: none")
     except (OSError, subprocess.SubprocessError):
         pass
     for label, path in (("root disk", "/"), ("data disk", DATA_DISK)):
         try:
             u = shutil.disk_usage(path)
-            out.append(f"{label}: {u.free / 2**30:.0f} GB free ({100 * u.used / u.total:.0f}% used)")
+            out.append(f"{label}: {u.free / 2**30:.1f} GB free ({100 * u.used / (u.used + u.free):.0f}% used)")  # as df
         except OSError:
             pass
     try:

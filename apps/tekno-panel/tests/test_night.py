@@ -35,8 +35,8 @@ def write_wavs(lib):
     sf = pytest.importorskip("soundfile")
     sr = 44100
     t = np.arange(int(sr * 0.4)) / sr
-    (lib / "Kicks").mkdir(parents=True)
-    sf.write(lib / "Kicks" / "hard.wav", (0.9 * np.sin(2 * np.pi * 55 * t) * np.exp(-t * 8)).astype("float32"), sr)
+    (lib / "Pack" / "Kicks").mkdir(parents=True)
+    sf.write(lib / "Pack" / "Kicks" / "hard.wav", (0.9 * np.sin(2 * np.pi * 55 * t) * np.exp(-t * 8)).astype("float32"), sr)
     rng = np.random.default_rng(1)
     noise = np.diff(rng.standard_normal(int(sr * 0.1)), prepend=0) * 0.3
     sf.write(lib / "odd.wav", noise.astype("float32"), sr)
@@ -60,8 +60,8 @@ def test_tag_night_measures_checks_and_resumes(tmp_path, monkeypatch):
     monkeypatch.setattr(qn, "chat", chat)
     assert qn.tag(100, False) == 0
     db = json.loads((night / "tags.json").read_text())
-    assert db["Kicks/hard.wav"]["role"] == "kick" and "boomy" in db["Kicks/hard.wav"]["tags"]
-    assert "bright" not in db["Kicks/hard.wav"]["tags"]
+    assert db["Pack/Kicks/hard.wav"]["role"] == "kick" and "boomy" in db["Pack/Kicks/hard.wav"]["tags"]
+    assert "bright" not in db["Pack/Kicks/hard.wav"]["tags"]
     assert db["odd.wav"]["role"] == "hat" and "boomy" not in db["odd.wav"]["tags"]
     assert "error" in db["broken.wav"]
     assert not any(c.isdigit() for c in db["odd.wav"]["note"])
@@ -86,7 +86,7 @@ def test_model_down_still_records_measurements(tmp_path, monkeypatch):
     monkeypatch.setattr(qn, "chat", boom)
     qn.tag(100, False)
     db = json.loads((night / "tags.json").read_text())
-    assert db["Kicks/hard.wav"]["role"] == "kick" and db["Kicks/hard.wav"]["by"] == "runner"
+    assert db["Pack/Kicks/hard.wav"]["role"] == "kick" and db["Pack/Kicks/hard.wav"]["by"] == "runner"
     assert json.loads((night / "tag_last.json").read_text())["model_errors"] == 1
 
 
@@ -166,7 +166,7 @@ def test_clap_role_and_tags_are_evidence():
     v, dropped = qn.check("misc/one.wav", m, {"role": "hat", "tags": ["industrial", "gabber", "bright"]})
     assert v["role"] == "perc" and "role hat->perc (clap)" in dropped
     assert v["tags"] == ["industrial", "bright"] and "tag gabber" in dropped
-    v, _ = qn.check("Kicks/x.wav", {**KICK_M, "clap_role": "bass", "clap_role_p": 0.99}, {"role": "kick"})
+    v, _ = qn.check("Pack/Kicks/x.wav", {**KICK_M, "clap_role": "bass", "clap_role_p": 0.99}, {"role": "kick"})
     assert v["role"] == "kick"  # the path still wins
 
 
@@ -180,11 +180,30 @@ def test_tag_with_clap_builds_the_search_index(tmp_path, monkeypatch, capsys):
                                                                         {"id": 1, "role": "kick", "tags": ["metallic"]}]}))
     qn.tag(100, False)
     db = json.loads((night / "tags.json").read_text())
-    assert db["Kicks/hard.wav"]["tags"] == ["gabber"] and db["Kicks/hard.wav"]["clap_role"] == "kick"
+    assert db["Pack/Kicks/hard.wav"]["tags"] == ["gabber"] and db["Pack/Kicks/hard.wav"]["clap_role"] == "kick"
     assert db["odd.wav"]["role"] == "other" and db["odd.wav"]["tags"] == ["metallic"]  # unsure CLAP, kick fails the check
-    assert json.loads((night / "clap" / "paths.json").read_text()) == ["Kicks/hard.wav", "odd.wav"]
+    assert json.loads((night / "clap" / "paths.json").read_text()) == ["Pack/Kicks/hard.wav", "odd.wav"]
     qn.save_emb(["odd.wav"], __import__("numpy").array([[0.0, 1.0]], "float32"))  # re-embedding never duplicates
-    assert json.loads((night / "clap" / "paths.json").read_text()) == ["Kicks/hard.wav", "odd.wav"]
-    assert qn.find(None, "Kicks/hard.wav", 5) == 0
+    assert json.loads((night / "clap" / "paths.json").read_text()) == ["Pack/Kicks/hard.wav", "odd.wav"]
+    assert qn.find(None, "Pack/Kicks/hard.wav", 5) == 0
     out = capsys.readouterr().out
     assert "odd.wav" in out and "[other: metallic]" in out
+
+
+def test_pack_folder_name_never_decides_the_role():
+    assert qn.role_hint("@pluggsupply samples loops/Breaks/Bubble Break 01.wav") is None
+    assert qn.role_hint("Ghosthack - Carbon - Acid Techno/Kicks/K1.wav") == "kick"
+    assert qn.role_hint("Ghosthack - Carbon - Acid Techno/Synths/S1.wav") == "synth"
+    assert qn.role_hint("Pack/Loops/G-Loop-LP-Filtered.wav") == "loop"
+
+
+def test_digest_says_when_it_cannot_read_services_and_a_job_is_running(tmp_path, monkeypatch):
+    digest_env(tmp_path, monkeypatch)
+
+    class R:
+        returncode, stdout, stderr = 1, "", "Failed to connect to bus: No medium found"
+    monkeypatch.setattr(qn.subprocess, "run", lambda *a, **k: R())
+    monkeypatch.setattr(qn, "job_running", lambda name: name == "tm001-loop")
+    f = "\n".join(qn.facts())
+    assert "failed services: unknown (systemctl: Failed to connect to bus" in f
+    assert "Claude Code job tm001-loop: running" in f

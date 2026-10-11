@@ -3,6 +3,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import alert_relay  # noqa: E402
 
@@ -68,6 +70,18 @@ def test_first_run_remembers_without_posting(tmp_path, monkeypatch):
     args = sent[0][1]
     assert args["to"] == ["CopperHeron", "LavenderElk"] and args["thread_id"] == "panel-errors"
     assert "acestep-api is down" in args["body_md"] and "Disk low" not in args["body_md"]
+
+
+def test_empty_state_file_starts_over_instead_of_crashing(tmp_path, monkeypatch):
+    # seen on the VM: the root disk filled up and left a 0-byte state file, and every run then failed
+    p = db(tmp_path, [("alert:disk:9700", 9700, "alert", None, "crit", "Disk low")])
+    monkeypatch.setattr(alert_relay, "DB", p)
+    (tmp_path / "state.json").write_text("")
+    monkeypatch.setattr(alert_relay, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(alert_relay.time, "time", lambda: 10_000.0)
+    monkeypatch.setattr(alert_relay.team_mail, "call", lambda *a, **k: pytest.fail("posted the backlog"))
+    assert alert_relay.main([]) == 0
+    assert "alert:disk" in json.loads((tmp_path / "state.json").read_text())
 
 
 def test_team_mail_finds_identities_without_home(tmp_path, monkeypatch):
