@@ -1,0 +1,9 @@
+[Unit]
+Description=Tekno Machine morning report: facts of the last 24 h plus a short local-Qwen summary, posted to agent-mail
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/tekno-panel/env
+ExecStart=/mnt/agent-data/ace-step/tools-venv/bin/python %h/.config/agent-mail/qwen_night.py digest
+Nice=10
+TimeoutStartSec=15min

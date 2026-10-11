@@ -224,5 +224,10 @@ The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` 
   heartbeat, notes, runs). One new control action `fallback.mode` (`auto` | `off` only; passcode, audit; written by the helper).
 - **Agents**: `tekno-agent start|step|done <name>` (tools/agent_status.py) writes `tekno_machine/agents/<name>.json`; the
   overview shows the roster (working agent silent for 20 min = amber, finished ones hide after 24 h).
+- **Night shift** (`tools/qwen_night.py`, timers `tekno-night-tag` 23:10 UTC and `tekno-night-digest` 07:50 Brussels): the
+  local Qwen gets no tools. `tag` measures each library sample and asks for role, tags and a note; the runner keeps only
+  tags the measurements support, lets a path hint ("Kicks/") decide the role, and writes `tekno_machine/night/tags.json`.
+  `digest` posts a <= 5 line summary plus the raw facts of the last 24 h to agent-mail thread `morning-report` as qwen.
+  Both report as `qwen-night` in the agent roster. The phone Bots tab shows one creature per roster agent.
 - **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
 - ACE-Step probes are off unless `TEKNO_ACE_ENABLED=1`.
