@@ -16,6 +16,9 @@ from .control import ActionError
 from .auth import COOKIE, SESSION_TTL, Auth
 from .config import Settings, load_settings
 from .files import AUDIO_EXT
+
+# handoff deliverables besides audio (DAW projects, MIDI, reports): served as downloads only
+HANDOFF_DOC_EXT = frozenset({".rpp", ".mid", ".md", ".txt", ".json", ".lua", ".zip"})
 from .state import Collector
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -203,10 +206,10 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         return Response(dumps(await asyncio.to_thread(collector.history.series, range)), media_type="application/json")
 
     # ---------- media ----------
-    def safe_file(root: Path, rel: str) -> Path:
+    def safe_file(root: Path, rel: str, exts=AUDIO_EXT) -> Path:
         root = root.resolve()
         p = (root / rel).resolve()
-        if not p.is_relative_to(root) or p.suffix.lower() not in AUDIO_EXT or not p.is_file():
+        if not p.is_relative_to(root) or p.suffix.lower() not in exts or not p.is_file():
             raise HTTPException(404, "not found")
         return p
 
@@ -223,7 +226,10 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         need_auth(request)
         if "/" in project or project.startswith("."):
             raise HTTPException(404, "not found")
-        p = safe_file(s.handoff_path, f"{project}/{path}")
+        p = safe_file(s.handoff_path, f"{project}/{path}", AUDIO_EXT | HANDOFF_DOC_EXT)
+        if p.suffix.lower() in HANDOFF_DOC_EXT:  # project files and reports: download, never render
+            return FileResponse(p, filename=p.name, media_type="application/octet-stream",
+                                headers={"Cache-Control": "private, max-age=60", "X-Content-Type-Options": "nosniff"})
         return FileResponse(p, headers={"Cache-Control": "private, max-age=60"})
 
     @app.get("/media-ref")

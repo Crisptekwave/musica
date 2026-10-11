@@ -191,10 +191,17 @@ def test_handoff_media_is_confined(client, settings):
     (h / "stems").mkdir(parents=True)
     (h / "master.wav").write_bytes(b"RIFF" + b"\0" * 16)
     (h / "score.json").write_text("{}")
+    (h / "track.rpp").write_text("<REAPER_PROJECT\n>\n")
+    (h / "render.py").write_text("print(1)")
     assert client.get("/handoff/e2e-001_tekno_165_Fmin/master.wav").status_code == 401
+    assert client.get("/handoff/e2e-001_tekno_165_Fmin/track.rpp").status_code == 401
     login(client)
     assert client.get("/handoff/e2e-001_tekno_165_Fmin/master.wav").content.startswith(b"RIFF")
-    for bad in ("/handoff/e2e-001_tekno_165_Fmin/score.json", "/handoff/e2e-001_tekno_165_Fmin/../../tools/x.mp3",
+    for doc in ("track.rpp", "score.json"):  # project files and reports download, never render
+        r = client.get(f"/handoff/e2e-001_tekno_165_Fmin/{doc}")
+        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+        assert r.headers["content-type"].startswith("application/octet-stream")
+    for bad in ("/handoff/e2e-001_tekno_165_Fmin/render.py", "/handoff/e2e-001_tekno_165_Fmin/../../tools/x.mp3",
                 "/handoff/..%2F..%2Fetc/passwd", "/handoff/.hidden/master.wav"):
         assert client.get(bad).status_code == 404, bad
 
