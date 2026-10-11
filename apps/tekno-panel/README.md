@@ -4,9 +4,8 @@ A mobile-first live dashboard for the 24/7 Tekno Machine on the Google L4 VM. It
 the Hermes kanban, ACE-Step, the GPU, the card folders and agent-mail, and pushes a fresh
 snapshot to your phone over a WebSocket every 1.5 s. You never need to reload.
 
-**It is read-only.** The only thing it ever writes is a comment on a Review card, when you tap
-**Approve** or **Reject + note**. That write goes through `hermes kanban comment`; the panel
-never writes the DB directly. It never starts, stops or restarts anything.
+Its data sources are read directly and never written by the panel itself; changes go through the allowlisted
+**Controls** below (Approve / Reject + note on Review cards, plus the actions you approved) and are audited.
 
 ## Screens
 
@@ -71,6 +70,33 @@ An agent token only shows that agent's own mail, so the track threads come from
 `GET /mail/api/unified-inbox` (server bearer only, every project). The token is used only when
 that endpoint is unavailable. agent-mail echoes resource URIs, tokens included, in its errors:
 the panel redacts them before showing an error.
+
+## Controls (approved by the owner)
+
+The panel is no longer read-only. Every action is from a fixed allowlist (`tekno_panel/control.py`), validated
+(task ids, card slugs, run steps, services and pids against strict patterns and the live process scan), confirmed
+in the UI, rate limited (8/min) and appended to `$TEKNO_DATA_DIR/audit.jsonl` with its outcome. Nothing builds a
+shell string from your input. `TEKNO_CONTROLS=0` switches all of it off.
+
+| Action | Tier | How it runs |
+|---|---|---|
+| Pause / Resume the machine | confirm | writes / removes `tekno_machine/PAUSED` (the ACE scripts refuse to start while it exists) |
+| Note, Unblock, Block a card | confirm | `hermes kanban comment / unblock / block` as the panel user |
+| Run the pipeline from a step | passcode | `sudo -n -u Gebruiker` → `run_e2e.sh <card> <step>`, output to the card's next `runN.log`; refused while paused, while the card already runs, or (plan/gen) while the GPU lock is held |
+| Stop a running lane | passcode | `sudo -n kill -TERM` on the pids the process scan attributes to that card |
+| Restart a service | passcode | acestep-api, acestep-lora, acestep-ui, agent-mail (Gebruiker user units), hermes-gateway, litellm (system units) |
+| Dispatcher pass | passcode | `hermes kanban dispatch --max 3` |
+
+Passcode re-entry counts toward the login lockout. Desktop: the Controls page (also in ⌘K), and buttons in the
+track drawer. Phone: Controls card on the Machine tab, and buttons in a track's sheet.
+
+## History, activity, alerts
+
+The panel keeps its own SQLite (`$TEKNO_DATA_DIR/history.db`, default `/mnt/agent-data/apps/tekno-panel-data`):
+15 s metric samples (GPU util/temp/power, VRAM, disk, load, ACE busy, lanes working) and a deduplicated activity
+timeline (board events, run steps, new renders, ACE takes/errors, unit lifecycle, mail, your actions, alerts), 14 days.
+Alerts: disk low, service down, source down, GPU ≥ 85 °C, ACE error < 30 min, stuck tracks, board behind disk,
+reviews waiting, daily cap. Desktop pages: Overview, Tracks, Activity, Machine (1h/6h/24h/7d charts), Controls, Alerts.
 
 ## Install on the VM
 

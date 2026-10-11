@@ -192,7 +192,7 @@
       if (body.dataset.key === key) return;
       body.dataset.key = key;
       const chain = (t.tasks || []).map(x => `<div class="chain-row"><i class="cd ${esc(x.status)}"></i><span>${esc(x.lane || "?")}</span><span class="id">${esc(x.id)}</span><span class="st">${esc(x.status)}</span></div>`).join("");
-      body.innerHTML = `<h2>${esc(t.slug)}</h2>
+      body.innerHTML = `<h2>${esc(t.slug)}</h2>${Control.trackButtons(t, S.snap)}
         <div><span class="pill ${esc(t.state)}">${esc(STATE_LABEL[t.state] || t.state)}</span> <span class="muted">lane <b style="color:var(--text)">${esc(t.lane)}</b>${t.board_lane && t.board_lane !== t.lane ? ` · board: ${esc(t.board_lane)}` : ""}${t.loops ? ` · <span style="color:var(--amber)">${Live.loops(t.loops)}${t.loops_src === "disk" ? " (run logs)" : ""}</span>` : ""}${t.files_lane && t.files_lane !== t.lane ? ` · on disk: ${esc(t.files_lane)}` : ""}</span></div>
         <div class="progress"><div class="bar"><i style="width:${Math.max(2, Number(t.progress) || 0)}%"></i></div><span class="pct">${Number(t.progress) || 0}%</span></div>
         ${Live.liveLine(t)}${Live.behindNote(t)}
@@ -506,7 +506,7 @@
   }
 
   // ================= SaaS shell: pages, alerts, command palette =================
-  const PAGES = ["overview", "tracks", "activity", "machine", "alerts"];
+  const PAGES = ["overview", "tracks", "activity", "machine", "controls", "alerts"];
   Object.assign(S, { page: "overview", range: store.get("tekno-range", "1h"), actKind: "", actQ: "", actRows: null, actOlder: [],
     sort: { k: "last_activity", dir: -1 }, tracksQ: "", metrics: null, metricsAt: 0, cmdSel: 0 });
   const KIND_LABEL = { run: "run", kanban: "board", render: "render", ace: "ACE", service: "service", mail: "mail", alert: "alert", action: "you" };
@@ -533,6 +533,18 @@
     else if (S.page === "activity") renderActivity(snap);
     else if (S.page === "machine") { renderMachinePage(snap); if (Date.now() - S.metricsAt > 15000) loadMetrics(); }
     else if (S.page === "alerts") renderAlerts(snap);
+    else if (S.page === "controls") renderControls(snap);
+    const m = snap.machine || {};
+    $("#paused-banner").classList.toggle("hidden", !m.paused);
+    if (m.paused) $("#paused-banner").textContent = `⏸ Machine paused ${Live.ago(m.since)}: ${m.reason || ""}. New ACE jobs won't start. Resume from Controls.`;
+  }
+  function renderControls(snap) {
+    const box = $("#ctl-center");
+    const key = JSON.stringify([snap.machine, snap.controls?.enabled, (snap.tracks || []).map(t => t.slug), (snap.processes || []).map(p => [p.card, p.script]),
+      (snap.health?.services || []).map(s => s.status)]);
+    if (box.dataset.key !== key && !box.contains(document.activeElement)) { box.dataset.key = key; box.innerHTML = Control.centerHtml(snap); }
+    const ak = JSON.stringify((snap.audit || []).map(a => a.ts));
+    if ($("#ctl-audit").dataset.key !== ak) { $("#ctl-audit").dataset.key = ak; $("#ctl-audit").innerHTML = Control.auditHtml(snap.audit); }
   }
 
   // ---- alerts + bell
@@ -662,6 +674,12 @@
     (snap.tracks || []).forEach(t => items.push({ k: "track", label: t.slug, sub: `${t.lane} · ${STATE_LABEL[t.state] || t.state}`, run: () => { go("overview"); openDrawer({ slug: t.slug }); } }));
     (snap.audio || []).filter(a => a.kind === "render").slice(0, 40).forEach(a => items.push({ k: "render", label: `${a.card} · ${a.path.split("/").pop()}`, sub: `${a.stage} · ${Live.ago(a.mtime)}`, run: () => { go("overview"); loadTake(a, true); } }));
     (snap.alerts || []).forEach(a => items.push({ k: "alert", label: a.title, sub: a.level, run: () => go("alerts") }));
+    if (snap.controls?.enabled) {
+      items.push(snap.machine?.paused ? { k: "control", label: "Resume the machine", sub: "PAUSED", run: Control.actions.resume }
+        : { k: "control", label: "Pause the machine", sub: "writes PAUSED", run: Control.actions.pause });
+      (snap.controls.services || []).forEach(sv => items.push({ k: "control", label: `Restart ${sv}`, sub: "passcode", run: () => Control.actions.restart(sv) }));
+      items.push({ k: "control", label: "Dispatcher pass", sub: "passcode", run: Control.actions.dispatch });
+    }
     items.push({ k: "action", label: "Toggle fullscreen", sub: "F", run: toggleFs }, { k: "action", label: "Phone view", sub: "▯", run: () => { location.href = "/?view=phone"; } });
     return items;
   }
@@ -705,6 +723,8 @@
     window.addEventListener("resize", () => { if (S.page === "machine") drawMetrics(); });
   }
 
+  Control.init({ toast, demo: () => S.snap?.mode === "demo" });
+  Control.wire($("#ctl-center")); Control.wire($("#drawer")); Control.wireTrack($("#drawer"));
   wire(); wireShell(); boot(); route();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();

@@ -120,12 +120,15 @@
     if (S.screen === "health") renderHealth(snap);
     renderChat(snap);
     renderBellM(snap);
+    const m = snap.machine || {};
+    $("#paused-banner").classList.toggle("hidden", !m.paused);
+    if (m.paused) $("#paused-banner").textContent = `⏸ Machine paused: ${m.reason || ""}. New ACE jobs won't start.`;
   }
 
   // ---------------- alerts (top bar) ----------------
   function renderBellM(snap) {
     const al = snap.alerts || [], b = $("#bell-m");
-    b.textContent = al.length ? `! ${al.length}` : "";
+    b.textContent = al.length ? String(al.length) : "";
     b.classList.toggle("hidden", !al.length);
     b.classList.toggle("crit", al.some(a => a.level === "crit"));
   }
@@ -227,7 +230,7 @@
     const msgs = (S.snap.chat?.messages || []).filter(m => m.thread === `card-${slug}`);
     const renders = (S.snap.audio || []).filter(a => a.card === slug && a.kind === "render");
     const backs = t.sendbacks || [];
-    openSheet(`<h2>${esc(t.slug)}</h2><div><span class="pill ${esc(t.state)}">${esc(t.state)}</span> <span class="muted">lane <b style="color:var(--text)">${esc(t.lane)}</b>${t.board_lane && t.board_lane !== t.lane ? ` · board: ${esc(t.board_lane)}` : ""}${t.loops ? ` · <span style="color:var(--amber)">${Live.loops(t.loops)}${t.loops_src === "disk" ? " (from run logs)" : ""}</span>` : ""}</span></div>
+    openSheet(`<h2>${esc(t.slug)}</h2>${Control.trackButtons(t, S.snap)}<div style="margin-top:10px"><span class="pill ${esc(t.state)}">${esc(t.state)}</span> <span class="muted">lane <b style="color:var(--text)">${esc(t.lane)}</b>${t.board_lane && t.board_lane !== t.lane ? ` · board: ${esc(t.board_lane)}` : ""}${t.loops ? ` · <span style="color:var(--amber)">${Live.loops(t.loops)}${t.loops_src === "disk" ? " (from run logs)" : ""}</span>` : ""}</span></div>
       ${Live.liveLine(t)}${Live.behindNote(t)}
       ${t.lane === "Review" && t.review_task_id ? `<div class="review-actions"><button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : ""}
@@ -402,6 +405,10 @@
       ${d.warn ? `<div class="warn-text">⚠ Under ${d.warn_gb} GB: watchdog will PAUSE the machine.</div>` : ""}` : `<span class="warn-text">${esc(d.error || "no disk data")}</span>`;
     $("#svc-box").innerHTML = (h.services || []).map(s => `<div class="svc-row"><span class="sd ${esc(s.status)}"></span><b>${esc(s.name)}</b><span class="via">${esc(s.status)} · ${esc(s.via)}</span></div>`).join("") || `<span class="muted">checking…</span>`;
     $("#src-box").innerHTML = Live.freshnessHtml(snap);
+    const ck = JSON.stringify([snap.machine, snap.controls?.enabled, (snap.tracks || []).map(t => t.slug), (snap.processes || []).map(p => [p.card, p.script]),
+      (h.services || []).map(s => s.status)]);
+    if ($("#ctl-box").dataset.key !== ck && !$("#ctl-box").contains(document.activeElement)) { $("#ctl-box").dataset.key = ck; $("#ctl-box").innerHTML = Control.centerHtml(snap); }
+    $("#ctl-audit-m").innerHTML = Control.auditHtml(snap.audit);
   }
 
   // ---------------- chat ----------------
@@ -494,6 +501,8 @@
     $("#score-cards").addEventListener("click", e => { const b = e.target.closest("[data-score]"); if (!b) return; haptic(5); S.scoreCard = b.dataset.score; renderScores(S.snap); });
     $("#thread-row").addEventListener("click", e => { const b = e.target.closest("[data-thread]"); if (!b) return; S.thread = b.dataset.thread || null; renderChat(S.snap); });
     $("#bell-m").addEventListener("click", alertsSheet);
+    Control.init({ toast, demo: () => S.snap?.mode === "demo" });
+    Control.wire($("#ctl-box")); Control.wire($("#sheet-body")); Control.wireTrack($("#sheet-body"));
     $("#feed-tabs").addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return; haptic(5); S.feed = b.dataset.f;
       document.querySelectorAll("#feed-tabs button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));

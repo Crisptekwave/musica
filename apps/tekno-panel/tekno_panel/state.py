@@ -7,6 +7,7 @@ import time
 import urllib.parse
 
 from . import acelog, files, insights, kanban, machine, procs
+from .control import Controller
 from .history import History
 from .config import LANES, Settings
 from .mail import AgentMail, bearer_from_hermes, identity, load_agents, redact, threads
@@ -159,9 +160,10 @@ def section_progress(cards_dir, card: str | None, since: float | None, plan: dic
 class Collector:
     """Background thread that refreshes sources at different cadences."""
 
-    def __init__(self, s: Settings):
+    def __init__(self, s: Settings, runner=None):
         self.s = s
         self.history = History(s.data_dir / "history.db")  # the panel's own memory, not a data source
+        self.controller = Controller(s, s.data_dir, runner=runner)
         self._alert_since: dict[str, float] = {}
         self._activity: list[dict] = []
         self._journal: list[dict] = []
@@ -321,16 +323,20 @@ class Collector:
         return snap
 
     def _enrich(self, snap: dict, board: dict, ace: dict, now: float) -> None:
-        """Alerts, activity timeline and metrics history (read-only towards the machine)."""
+        """Pause state, alerts, audit, activity timeline and metrics history."""
+        snap["machine"] = self.controller.paused()
         al = insights.alerts(snap, now)
         keys = {a["key"] for a in al}
         self._alert_since = {k: v for k, v in self._alert_since.items() if k in keys}
         for a in al:
             a["since"] = self._alert_since.setdefault(a["key"], now)
         snap["alerts"] = al
+        audit = self.controller.audit_tail(30)
+        snap["audit"] = audit[:12]
+        snap["controls"] = {"enabled": self.s.controls, **self.controller.registry()}
         if now - self._slow_at < 0.5 or not self._activity:  # once per slow cycle
             try:
-                self.history.add_events(insights.events(board, self._disk, ace, self._journal, self._chat, [], al))
+                self.history.add_events(insights.events(board, self._disk, ace, self._journal, self._chat, audit, al))
                 self._activity = self.history.events(60)
             except Exception as e:  # history is a nice-to-have, never break the live snapshot
                 snap.setdefault("errors", []).append(f"history: {e}")

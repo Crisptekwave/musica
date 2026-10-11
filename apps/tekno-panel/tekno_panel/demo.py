@@ -14,6 +14,7 @@ import wave
 from functools import lru_cache
 
 from .config import LANES, SCRIPT_LANES
+from .control import ACTIONS, RUN_STEPS, services_map
 from .mail import threads as mail_threads
 
 SLUGS = ["acid-rave-017", "squat-303-018", "bunker-f-019", "teknival-020", "sound-sys-021",
@@ -260,6 +261,12 @@ def snapshot(now: float | None = None) -> dict:
         "processes": [{"pid": t["live"]["pid"], "script": t["live"]["script"], "lanes": [t["lane"]], "card": t["slug"],
                        "since": t["live"]["since"], "task": None} for t in trs if t.get("live")],
         "freshness": {"kanban": now - 20, "files": now - 4, "ace_log": now - 1, "mail": ch["messages"][-1]["ts"]},
+        "controls": {"enabled": True, "actions": ACTIONS, "services": sorted(services_map("demo", 1000)), "steps": list(RUN_STEPS)},
+        "machine": {"paused": False}, "audit": [],
+        "alerts": [{"key": f"failed:{t['slug']}", "level": "warn", "card": t["slug"], "title": f"{t['slug']} stuck in {t['lane']}",
+                    "detail": "demo", "since": now - 120} for t in trs if t["state"] == "failed"],
+        "activity": [{"id": f"demo:{m['id']}", "ts": m["ts"], "kind": "mail", "card": m["thread"][5:], "level": "info",
+                      "text": f"{m['from']}: {m['body']}"} for m in reversed(ch["messages"][-15:])],
         "sources": {"kanban": {"ok": True, "error": None}, "files": {"ok": True}, "mail": {"ok": True}},
     }
 

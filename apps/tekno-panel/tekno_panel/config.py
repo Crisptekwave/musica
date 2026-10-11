@@ -107,6 +107,9 @@ class Settings:
     # the panel's own data (metrics history, activity, audit log): on the data disk, never the root disk
     data_dir: Path = Path("/mnt/agent-data/apps/tekno-panel-data")
     controls: bool = True
+    ace_user: str = "Gebruiker"   # owner of the lane scripts, card folders and the ACE/agent-mail user units
+    ace_uid: int = 1001
+    ace_workdir: Path = Path("/mnt/agent-data/ace-step")  # run_e2e.sh is run from here
     cgroup_root: Path = Path("/sys/fs/cgroup")
     agent_mail_url: str = "http://100.84.117.126:8765/mcp/"
     agent_mail_project: str = "hermes-music"
@@ -171,6 +174,9 @@ def load_settings() -> Settings:
         push_interval=float(_env("TEKNO_PUSH_INTERVAL", "1.5")),
         data_dir=Path(_env("TEKNO_DATA_DIR", "/mnt/agent-data/apps/tekno-panel-data")),
         controls=_env("TEKNO_CONTROLS", "1").lower() in ("1", "true", "yes", "on"),
+        ace_user=_env("TEKNO_ACE_USER", "Gebruiker"),
+        ace_uid=int(_env("TEKNO_ACE_UID", "1001")),
+        ace_workdir=Path(_env("TEKNO_ACE_WORKDIR", "/mnt/agent-data/ace-step")),
     )
     s.hermes_bin = Path(_env("TEKNO_HERMES_BIN", str(s.hermes_home / "hermes-agent" / "venv" / "bin" / "hermes")))
     if os.environ.get("TEKNO_KANBAN_DB"):

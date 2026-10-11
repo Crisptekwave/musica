@@ -11,7 +11,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import demo, review
+from . import demo, procs, review
+from .control import ActionError
 from .auth import COOKIE, SESSION_TTL, Auth
 from .config import Settings, load_settings
 from .files import AUDIO_EXT
@@ -40,11 +41,11 @@ def dumps(snap: dict) -> str:
         return json.dumps(_finite(snap), default=str, allow_nan=False)
 
 
-def create_app(settings: Settings | None = None, start_collector: bool = True, runner=None) -> FastAPI:
+def create_app(settings: Settings | None = None, start_collector: bool = True, runner=None, action_runner=None) -> FastAPI:
     s = settings or load_settings()
     s.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     auth = Auth(s.state_dir)
-    collector = Collector(s)
+    collector = Collector(s, runner=action_runner)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -156,6 +157,38 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         except review.ReviewError as e:
             raise HTTPException(e.status, str(e))
         return {"ok": True, "comment": text}
+
+    # ---------- controls (allowlisted, audited; danger tier needs the passcode again) ----------
+    @app.post("/api/action")
+    async def action(request: Request):
+        need_auth(request)
+        if request.headers.get("x-tekno") != "1":
+            raise HTTPException(403, "missing x-tekno header")
+        if not s.controls:
+            raise HTTPException(403, "controls are switched off (TEKNO_CONTROLS=0)")
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            body = {}
+        name, params = str(body.get("action", "")), body.get("params") or {}
+        ip = request.client.host if request.client else "?"
+        if body.get("demo") or s.demo:
+            return {"ok": True, "demo": True, "summary": f"Demo: {name} not run"}
+        if auth.locked(ip):
+            raise HTTPException(429, "Too many wrong passcodes. Wait 5 minutes.")
+        running = await asyncio.to_thread(procs.scan, s.proc_root)
+        try:
+            res = await asyncio.to_thread(collector.controller.run, name, params, running, ip,
+                                          lambda code: auth.check(ip, code))
+        except ActionError as e:
+            raise HTTPException(e.status, str(e))
+        collector._slow_at = 0  # rescan now so the result shows on the next push
+        return res
+
+    @app.get("/api/audit")
+    async def audit_log(request: Request):
+        need_auth(request)
+        return {"audit": collector.controller.audit_tail(200)}
 
     # ---------- history ----------
     @app.get("/api/activity")

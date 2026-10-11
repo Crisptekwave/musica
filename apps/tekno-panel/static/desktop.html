@@ -34,6 +34,7 @@
       <a href="#/tracks" data-page="tracks" title="Tracks"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zM3 11h18v2H3zM3 17h12v2H3z"/></svg><span>Tracks</span></a>
       <a href="#/activity" data-page="activity" title="Activity"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-7 4 14 3-7h6v2h-5l-4 9-4-14-2 5H2z"/></svg><span>Activity</span></a>
       <a href="#/machine" data-page="machine" title="Machine"><svg viewBox="0 0 24 24"><path d="M4 4h16v10H4zM8 18h8v2H8zM11 14h2v4h-2z"/></svg><span>Machine</span></a>
+      <a href="#/controls" data-page="controls" title="Controls"><svg viewBox="0 0 24 24"><path d="M4 6h10v2H4zM18 6h2v2h-2zM14 4h2v6h-2zM4 16h4v2H4zM12 16h8v2h-8zM8 14h2v6H8z"/></svg><span>Controls</span></a>
       <a href="#/alerts" data-page="alerts" title="Alerts"><svg viewBox="0 0 24 24"><path d="M12 2a6 6 0 0 0-6 6v4l-2 4h16l-2-4V8a6 6 0 0 0-6-6zM10 19a2 2 0 0 0 4 0z"/></svg><span>Alerts</span><b class="rail-badge hidden" id="rail-alerts"></b></a>
     </nav>
     <div class="dk-main" id="dk-main">
@@ -53,6 +54,7 @@
       </div>
     </header>
     <div class="banner hidden" id="banner"></div>
+    <div class="paused-banner hidden" id="paused-banner"></div>
 
     <main class="dk-grid page" id="page-overview">
       <section class="panel p-pipe">
@@ -158,6 +160,14 @@
       </div>
     </section>
 
+    <section class="page dk-page hidden" id="page-controls">
+      <div class="page-head"><div><h1>Controls</h1><p class="muted">Allowlisted actions only. Risky ones ask for your passcode again. Every action is logged.</p></div></div>
+      <div class="two-col">
+        <div class="glass" id="ctl-center"></div>
+        <div class="glass"><h3>Audit log</h3><div id="ctl-audit"></div></div>
+      </div>
+    </section>
+
     <section class="page dk-page hidden" id="page-alerts">
       <div class="page-head"><div><h1>Alerts</h1><p class="muted">Live problems, worst first. They clear by themselves when fixed.</p></div></div>
       <div id="alerts-list"></div>
@@ -184,6 +194,7 @@
   <script src="/static/js/bots.js"></script>
   <script src="/static/js/player.js"></script>
   <script src="/static/js/live.js"></script>
+  <script src="/static/js/control.js"></script>
   <script src="/static/js/desktop.js"></script>
 </body>
 </html>
