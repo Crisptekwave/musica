@@ -71,6 +71,35 @@ An agent token only shows that agent's own mail, so the track threads come from
 that endpoint is unavailable. agent-mail echoes resource URIs, tokens included, in its errors:
 the panel redacts them before showing an error.
 
+### Team chat: Hermes, Grok Bot and Claude
+
+The agents talk to each other in agent-mail project `/hermes/music` (slug `hermes-music`). Every
+agent has its own identity with an `open` contact policy. agent-mail only delivers to
+adjective+noun names, so the handles are random-looking and the panel shows who they are
+(`TEKNO_AGENT_ALIASES`):
+
+| Handle | Who | Where it runs |
+|---|---|---|
+| `CopperHeron` | Hermes (main agent and every `tekno-*` lane) | the VM |
+| `LavenderElk` | Grok Bot (coordinator) | off the VM, polls its inbox about every 10 min |
+| `SilverOtter` | Claude | posts from the VM |
+| `Tekno-Panel` | this dashboard, read-only | never mail it |
+
+On the VM, `tools/team_mail.py` is installed as `~/.local/bin/team-mail`. It reads the identities
+from `~/.config/agent-mail/identities.json` and the tokens from their mode-600 files, and never
+prints them:
+
+```bash
+team-mail who
+team-mail inbox --as hermes --unread --bodies
+team-mail send  --as hermes --thread card-e2e-001 "mix: -13.1 LUFS, knock +3.4 dB"
+team-mail reply --as claude 3 "on it"
+```
+
+The Hermes `SOUL.md` and the seven `tekno-*` profile SOULs tell the lanes to check the inbox
+when a task starts, to post one line per finished lane in thread `card-<card>`, and to use
+`team-mail` instead of raw agent-mail calls.
+
 ## Controls (approved by the owner)
 
 The panel is no longer read-only. Every action is from a fixed allowlist (`tekno_panel/control.py`), validated
@@ -156,6 +185,7 @@ app shell; live data, audio and the WebSocket always go to the network.
 | `TEKNO_ACE_URL` / `TEKNO_ACE_LOG` | `http://127.0.0.1:8011` / `/mnt/agent-data/ace-step/logs/acestep.log` | ACE probes |
 | `TEKNO_LORA_LOG` / `TEKNO_ACE_UNITS` | `…/logs/lora_default.log` / `acestep-api.service,acestep-lora.service` | LoRA result, units read from the journal |
 | `TEKNO_AGENT_MAIL_URL` / `TEKNO_AGENT_MAIL_PROJECT` | `:8765/mcp/` / `hermes-music` | agent-mail |
+| `TEKNO_AGENT_ALIASES` | `LavenderElk=Grok Bot,CopperHeron=Hermes,SilverOtter=Claude,Tekno-Panel=Panel` | names shown for agent-mail handles |
 | `TEKNO_SERVICES_JSON` | built-in list | custom service checks (`name`, `unit`, `cgroup`, `journal`, `http`, `process`) |
 | `TEKNO_PUSH_INTERVAL` | `1.5` | seconds between pushes |
 

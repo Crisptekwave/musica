@@ -195,6 +195,27 @@ def _iso(ts):
     return d.astimezone(dt.timezone.utc).isoformat()
 
 
+def parse_aliases(spec: str) -> dict:
+    """'LavenderElk=Grok Bot,CopperHeron=Hermes' -> {handle: label} (agent-mail only allows adjective+noun names)."""
+    out = {}
+    for part in (spec or "").split(","):
+        k, _, v = part.partition("=")
+        if k.strip() and v.strip():
+            out[k.strip()] = v.strip()
+    return out
+
+
+def label(chat: dict, aliases: dict) -> dict:
+    """Add a human 'label' (Grok Bot, Hermes, Claude) next to each agent-mail handle."""
+    for m in chat.get("messages") or []:
+        m["label"] = aliases.get(m.get("from"), m.get("from"))
+        m["to_labels"] = [aliases.get(t, t) for t in m.get("to") or []]
+    for a in chat.get("agents") or []:
+        if isinstance(a, dict):
+            a["label"] = aliases.get(a.get("name"), a.get("name"))
+    return chat
+
+
 def threads(messages: list[dict], slugs: list[str]) -> list[dict]:
     """Thread list for the chat screen: one 'card-<slug>' thread per track (even when still empty), then others."""
     by: dict[str, dict] = {}

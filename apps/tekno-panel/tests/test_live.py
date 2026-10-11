@@ -504,3 +504,15 @@ def test_chat_keeps_track_threads_and_own_projects(settings, monkeypatch):
     monkeypatch.setattr(c.mail, "unified", lambda limit=400: msgs)
     chat = c._read_mail(["e2e-001"])
     assert {m["thread"] for m in chat["messages"]} == {"card-e2e-001", "general"}
+
+
+def test_agent_aliases_label_messages_and_agents():
+    aliases = mail.parse_aliases("LavenderElk=Grok Bot, CopperHeron=Hermes,bad,=x,SilverOtter=Claude")
+    assert aliases == {"LavenderElk": "Grok Bot", "CopperHeron": "Hermes", "SilverOtter": "Claude"}
+    chat = {"messages": [{"from": "SilverOtter", "to": ["CopperHeron", "LavenderElk"]}, {"from": "Someone", "to": []}],
+            "agents": [{"name": "LavenderElk"}, {"name": "Tekno-Panel"}]}
+    mail.label(chat, aliases)
+    assert chat["messages"][0]["label"] == "Claude"
+    assert chat["messages"][0]["to_labels"] == ["Hermes", "Grok Bot"]
+    assert chat["messages"][1]["label"] == "Someone"
+    assert [a["label"] for a in chat["agents"]] == ["Grok Bot", "Tekno-Panel"]

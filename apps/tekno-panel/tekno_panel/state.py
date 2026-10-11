@@ -10,7 +10,7 @@ from . import acelog, files, insights, kanban, machine, procs
 from .control import Controller
 from .history import History
 from .config import LANES, Settings
-from .mail import AgentMail, bearer_from_hermes, identity, load_agents, redact, threads
+from .mail import AgentMail, bearer_from_hermes, identity, label, load_agents, parse_aliases, redact, threads
 
 
 def media_url(card: str, path: str) -> str:
@@ -356,6 +356,9 @@ class Collector:
                                       "path": str(self.history.path)}
 
     def _read_mail(self, slugs: list[str]) -> dict:
+        return label(self._read_mail_raw(slugs), parse_aliases(self.s.agent_aliases))
+
+    def _read_mail_raw(self, slugs: list[str]) -> dict:
         ident = identity(self.agents)
         try:
             agents = self.mail.directory()

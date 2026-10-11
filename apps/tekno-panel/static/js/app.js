@@ -444,13 +444,14 @@
     let html = c.status === "ok" ? `<div class="mail-id">${c.identity ? `Reading as <b>${esc(c.identity.name)}</b> (read-only) · ` : ""}${esc(c.source || "")} · ${msgs.length} message${msgs.length === 1 ? "" : "s"}</div>` : "";
     if (c.status !== "ok") {
       html += `<div class="glass" style="font-size:13px"><b style="color:var(--amber)">agent-mail: ${esc(c.status)}</b><br><span class="muted">${esc(c.error || "")}</span>
-        ${(c.agents || []).length ? `<br><br>Agents in project: ${(c.agents || []).map(a => `<span class="mono" style="color:${agentColor(a.name)}">${esc(a.name)}</span> <small class="muted">${esc(a.program || "")}</small>`).join(", ")}` : ""}</div>`;
+        ${(c.agents || []).length ? `<br><br>Agents in project: ${(c.agents || []).map(a => `<span class="mono" style="color:${agentColor(a.label || a.name)}">${esc(a.label || a.name)}</span> <small class="muted">${esc(a.label && a.label !== a.name ? a.name : a.program || "")}</small>`).join(", ")}` : ""}</div>`;
     }
     html += shown.map(m => {
-      const right = /hermes/i.test(m.from);
-      const col = agentColor(m.from);
-      return `<div class="msg ${right ? "right" : ""}"><div class="avatar" style="background:${col};box-shadow:0 0 12px ${col}">${esc((m.from || "?").slice(0, 2).toUpperCase())}</div>
-        <div class="bubble"><div class="who" style="color:${col}">${esc(m.from)}</div><div class="txt">${esc(m.body || m.subject)}</div>
+      const who = m.label || m.from || "?";
+      const right = /hermes/i.test(who);
+      const col = agentColor(who);
+      return `<div class="msg ${right ? "right" : ""}"><div class="avatar" style="background:${col};box-shadow:0 0 12px ${col}">${esc(who.slice(0, 2).toUpperCase())}</div>
+        <div class="bubble"><div class="who" style="color:${col}" title="${esc(m.from)}">${esc(who)}</div><div class="txt">${esc(m.body || m.subject)}</div>
         <div class="meta"><span class="thread-tag">${esc(m.thread || "")}</span><span>${ago(m.ts)}</span></div></div></div>`;
     }).join("");
     if (!shown.length && c.status === "ok") html += `<div class="empty glass">${S.thread ? `No messages in <b>${esc(S.thread)}</b> yet.<br><small>Each lane posts a one-line note here when it finishes a card.</small>` : "No messages yet."}</div>`;

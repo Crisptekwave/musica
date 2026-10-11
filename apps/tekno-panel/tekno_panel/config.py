@@ -115,6 +115,8 @@ class Settings:
     agent_mail_project: str = "hermes-music"
     # chat shows track threads (card-<slug>) from any project plus all mail of these projects
     agent_mail_projects: tuple = ("hermes-music", "tekno-machine")
+    # agent-mail handle -> who it is (the team-mail identities: Grok Bot, Hermes, Claude)
+    agent_aliases: str = "LavenderElk=Grok Bot,CopperHeron=Hermes,SilverOtter=Claude,Tekno-Panel=Panel"
     tracks_per_day_cap: int = 6
     push_interval: float = 1.5
     services: list[dict] = field(default_factory=list)
@@ -170,6 +172,7 @@ def load_settings() -> Settings:
         agent_mail_url=_env("TEKNO_AGENT_MAIL_URL", "http://100.84.117.126:8765/mcp/"),
         agent_mail_project=_env("TEKNO_AGENT_MAIL_PROJECT", "hermes-music"),
         agent_mail_projects=tuple(x.strip() for x in _env("TEKNO_AGENT_MAIL_PROJECTS", "hermes-music,tekno-machine").split(",") if x.strip()),
+        agent_aliases=_env("TEKNO_AGENT_ALIASES", "LavenderElk=Grok Bot,CopperHeron=Hermes,SilverOtter=Claude,Tekno-Panel=Panel"),
         tracks_per_day_cap=int(_env("TEKNO_TRACKS_PER_DAY_CAP", "6")),
         push_interval=float(_env("TEKNO_PUSH_INTERVAL", "1.5")),
         data_dir=Path(_env("TEKNO_DATA_DIR", "/mnt/agent-data/apps/tekno-panel-data")),

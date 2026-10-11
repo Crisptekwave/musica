@@ -157,7 +157,7 @@
 
   function threadMsgsHtml(msgs, agentColor) {
     if (!msgs?.length) return "";
-    return msgs.slice(-6).map(m => `<div class="lv-msg"><b style="color:${agentColor ? agentColor(m.from) : "var(--acid)"}">${esc(m.from)}</b> <span class="muted">${ago(m.ts)}</span><div>${esc(m.body || m.subject)}</div></div>`).join("");
+    return msgs.slice(-6).map(m => `<div class="lv-msg"><b style="color:${agentColor ? agentColor(m.label || m.from) : "var(--acid)"}" title="${esc(m.from)}">${esc(m.label || m.from)}</b> <span class="muted">${ago(m.ts)}</span><div>${esc(m.body || m.subject)}</div></div>`).join("");
   }
 
   const loops = n => `↺ ${Number(n)} loop${Number(n) === 1 ? "" : "s"}`;
