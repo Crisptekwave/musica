@@ -38,9 +38,10 @@ fi
 [ -f "$CONF/agent_mail_agents.json" ] || { echo '[]' > "$CONF/agent_mail_agents.json"; chmod 600 "$CONF/agent_mail_agents.json"; }
 
 sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-panel.service" > "$UNIT_DIR/tekno-panel.service"
+sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-control-helper.service" > "$UNIT_DIR/tekno-control-helper.service"
 systemctl --user daemon-reload
-systemctl --user enable tekno-panel.service >/dev/null
-systemctl --user restart tekno-panel.service
+systemctl --user enable tekno-control-helper.service tekno-panel.service >/dev/null
+systemctl --user restart tekno-control-helper.service tekno-panel.service
 sleep 2
 systemctl --user --no-pager --lines=5 status tekno-panel.service || true
 . "$CONF/env"

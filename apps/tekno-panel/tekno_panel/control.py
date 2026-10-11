@@ -7,6 +7,9 @@ Nothing here ever builds a shell string from user input. Every action is
   login lockout),
 - rate limited, and written to an append-only audit log with its outcome.
 
+The panel itself runs with NoNewPrivileges: the sudo-backed actions are executed by the separate control
+helper (:mod:`tekno_panel.helper`), which rebuilds the argv from this same allowlist.
+
 Identities: the panel's own user for the PAUSED flag and the hermes kanban CLI; ``sudo -n -u <ace user>``
 for the lane scripts and the ACE/agent-mail user units; ``sudo -n systemctl`` for the two system units;
 ``sudo -n kill`` only for pids that the live process scan attributes to the card being stopped.
@@ -75,8 +78,9 @@ ACTIONS = {
 
 
 class Controller:
-    def __init__(self, s, data_dir: Path, runner=None, clock=time.time):
+    def __init__(self, s, data_dir: Path, runner=None, clock=time.time, helper=None):
         self.s = s
+        self.helper = helper  # (action, params) -> (code, out, err) for sudo-backed actions
         self.data_dir = data_dir
         self.runner = runner or self._run
         self.clock = clock
@@ -160,7 +164,10 @@ class Controller:
                 self.audit(rec)
                 return {"ok": True, "summary": summary, "result": result}
             try:
-                code, out, err = self.runner(argv)
+                if argv[0] == "sudo" and self.helper:
+                    code, out, err = self.helper(name, {k: v for k, v in params.items() if k != "passcode"})
+                else:
+                    code, out, err = self.runner(argv)
             except (OSError, subprocess.SubprocessError) as e:
                 code, out, err = 127, "", str(e)
             ok = code == 0
@@ -230,7 +237,8 @@ class Controller:
             log = card / f"run{n}.log"
             script = str(self.s.scripts_path / "run_e2e.sh")
             # positional args only: nothing from the request is interpolated into the shell text
-            body = 'cd "$1" && setsid nohup bash "$2" "$3" "$4" > "$5" 2>&1 < /dev/null & echo started'
+            # umask 022 so the new card files stay readable like the ones from manual runs
+            body = 'umask 022; cd "$1" && setsid nohup bash "$2" "$3" "$4" > "$5" 2>&1 < /dev/null & echo started'
             argv = ["sudo", "-n", "-u", self.s.ace_user, "bash", "-c", body, "tekno-run",
                     str(self.s.ace_workdir), script, slug, step, str(log)]
             return argv, f"Run {slug} from {step} → {log.name}", True

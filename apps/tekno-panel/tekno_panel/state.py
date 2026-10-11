@@ -163,7 +163,10 @@ class Collector:
     def __init__(self, s: Settings, runner=None):
         self.s = s
         self.history = History(s.data_dir / "history.db")  # the panel's own memory, not a data source
-        self.controller = Controller(s, s.data_dir, runner=runner)
+        from .helper import client as helper_client
+        # sudo-backed actions go through the separate control helper (the panel runs with NoNewPrivileges);
+        # tests inject a runner instead
+        self.controller = Controller(s, s.data_dir, runner=runner, helper=None if runner else helper_client)
         self._alert_since: dict[str, float] = {}
         self._activity: list[dict] = []
         self._journal: list[dict] = []
