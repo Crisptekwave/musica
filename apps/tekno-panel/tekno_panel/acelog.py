@@ -69,7 +69,7 @@ def parse(lines: list[str]) -> dict:
                 pass
             msg, level = m.group("msg"), m.group("level")
             if "[memory] Set M_MMAP_THRESHOLD=" in msg:
-                job = None
+                job, last_error = None, None  # errors from before a restart are history
                 ev("ACE service (re)started")
             elif (c := CHUNK_RE.search(msg)):
                 seeds = [s.strip() for s in c.group("seeds").split(",") if s.strip()]

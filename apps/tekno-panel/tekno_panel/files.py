@@ -310,9 +310,9 @@ def score_badges(root: Path, score: dict) -> list[dict]:
         _badge(corr_ok, c_full, "Stereo corr", ">= 0.3 per band",
                detail=" · ".join(f"{b} {v:.2f}" for b, v in gate.items()) or None),
         # documented target (DESIGN.md: knock >= +3 dB), not a hard gate in score_card.py -> warn, not fail
-        _badge(None, None if knock is None else round(knock, 1), "Kick knock", ">= +3 dB (100-250 Hz)",
+        _badge(None, None if knock is None else round(knock, 1), "Kick knock", ">= +3 dB",
                status="na" if knock is None else ("pass" if knock >= KNOCK_MIN else "warn"),
-               detail="fair.py KNOCK100-250 median, beat vs off-beat"),
+               detail="fair.py KNOCK100-250 median (100-250 Hz), beat vs off-beat; target from DESIGN.md, not a hard gate"),
         ref_badge,
         _badge(mono_ok, mono_v, "Monotony", f"change <= {MONOTONY_MAX} bars"),
         _judge(root, score),

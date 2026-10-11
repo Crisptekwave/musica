@@ -82,9 +82,12 @@
         <div class="filter-row" id="score-cards"></div>
         <div class="glass verdict-box" id="verdict-box"></div>
         <div class="badges" id="badges"></div>
+        <div class="glass" id="ref-box"></div>
+        <p class="hint" id="hist-note"></p>
         <div class="glass chart-box"><h3>LUFS-I <small>target -9 ±0.5</small></h3><canvas id="ch-lufs" height="130"></canvas></div>
         <div class="glass chart-box"><h3>True peak <small>≤ -1.0 dBTP</small></h3><canvas id="ch-tp" height="130"></canvas></div>
-        <div class="glass chart-box"><h3>Mix Judge / EarLoop <small>≥ 6.5</small></h3><canvas id="ch-judge" height="130"></canvas></div>
+        <div class="glass chart-box"><h3>Kick knock <small>100-250 Hz · target ≥ +3 dB</small></h3><canvas id="ch-knock" height="130"></canvas></div>
+        <div class="glass chart-box"><h3>Mix Judge / EarLoop <small>≥ 6.5 · auto-draft until judged</small></h3><canvas id="ch-judge" height="130"></canvas></div>
       </section>
 
       <section class="screen" id="s-health" data-title="Machine">
@@ -93,11 +96,12 @@
           <div class="glass gauge-box"><canvas id="g-vram" width="160" height="160"></canvas><span>VRAM</span></div>
         </div>
         <div class="glass"><h3>GPU <small id="gpu-name"></small></h3><canvas id="ch-gpu" height="70"></canvas><div class="kv" id="gpu-kv"></div></div>
-        <div class="glass"><h3>ACE-Step</h3><div id="ace-box"></div></div>
+        <div class="glass"><h3>ACE-Step <small>acestep.log + journal</small></h3><div id="ace-box"></div></div>
+        <div class="glass"><h3>Running now <small>lane scripts</small></h3><div id="proc-box" class="svc"></div></div>
         <div class="glass"><h3>Tracks today</h3><div id="cap-box"></div></div>
         <div class="glass"><h3>Disk <small id="disk-path"></small></h3><div id="disk-box"></div></div>
         <div class="glass"><h3>Services</h3><div id="svc-box" class="svc"></div></div>
-        <div class="glass"><h3>Sources</h3><div id="src-box" class="svc"></div></div>
+        <div class="glass"><h3>Sources <small>last real change</small></h3><div id="src-box" class="svc"></div></div>
         <button class="ghost" id="logout-btn">Log out</button>
       </section>
 
@@ -127,6 +131,7 @@
   <script src="/static/js/charts.js"></script>
   <script src="/static/js/bots.js"></script>
   <script src="/static/js/player.js"></script>
+  <script src="/static/js/live.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

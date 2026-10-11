@@ -16,9 +16,12 @@ def media_url(card: str, path: str) -> str:
 
 
 def audio_url(a: dict) -> str:
+    """URL with the file's mtime: lanes overwrite the same paths (polish/master.wav) on every pass,
+    so a new version gets a new URL. Follow newest notices it and the browser never plays a cached old take."""
+    v = f"?v={int(a.get('mtime') or 0)}"
     if a.get("root") == "handoff":
-        return f"/handoff/{urllib.parse.quote(a['path'])}"
-    return media_url(a["card"], a["path"])
+        return f"/handoff/{urllib.parse.quote(a['path'])}{v}"
+    return media_url(a["card"], a["path"]) + v
 
 
 def _lane_idx(lane: str | None) -> int:

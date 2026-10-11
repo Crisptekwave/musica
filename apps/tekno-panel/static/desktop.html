@@ -88,11 +88,15 @@
           <div class="badges dk-badges" id="badges"></div>
           <div class="chart-tabs">
             <div class="seg" id="chart-tabs">
-              <button data-c="lufs" aria-pressed="true">LUFS-I</button>
-              <button data-c="tp" aria-pressed="false">True peak</button>
-              <button data-c="judge" aria-pressed="false">Judge · EarLoop</button>
+              <button data-c="lufs" aria-pressed="true" title="LUFS-I history">LUFS</button>
+              <button data-c="tp" aria-pressed="false" title="True peak history">TP</button>
+              <button data-c="knock" aria-pressed="false" title="Kick knock 100-250 Hz history">Knock</button>
+              <button data-c="ref" aria-pressed="false" title="Band levels vs SIFRES v02 (ref_compare.py)">SIFRES</button>
+              <button data-c="judge" aria-pressed="false" title="Mix Judge (auto-draft until judged) and EarLoop">Judge</button>
             </div>
             <canvas id="score-chart" height="150"></canvas>
+            <div id="ref-pane" class="ref-pane hidden"></div>
+            <div class="chart-note" id="chart-note"></div>
           </div>
         </div>
       </section>
@@ -129,6 +133,7 @@
   <script src="/static/js/charts.js"></script>
   <script src="/static/js/bots.js"></script>
   <script src="/static/js/player.js"></script>
+  <script src="/static/js/live.js"></script>
   <script src="/static/js/desktop.js"></script>
 </body>
 </html>

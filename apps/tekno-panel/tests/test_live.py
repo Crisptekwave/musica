@@ -414,7 +414,7 @@ def test_collector_snapshot_live(settings, machine_tree, tmp_path, monkeypatch):
     assert snap["chat"]["status"] == "ok" and snap["chat"]["identity"]["name"] == "Tekno-Panel"
     assert snap["chat"]["threads"][0]["id"] == "card-e2e-001"
     assert snap["handoff"][0]["project"] == "e2e-001_tekno_165_Fmin"
-    assert any(a["url"] == "/handoff/e2e-001_tekno_165_Fmin/master.wav" for a in snap["audio"])
+    assert any(a["url"].startswith("/handoff/e2e-001_tekno_165_Fmin/master.wav?v=") for a in snap["audio"])
     assert snap["freshness"]["files"] and len(snap["history"]) >= 4
     e2e = next(t for t in snap["tracks"] if t["slug"] == "e2e-001")
     assert e2e["plan"]["bpm"] == 165.0 and e2e["runs"][-1]["name"] == "run5.log"

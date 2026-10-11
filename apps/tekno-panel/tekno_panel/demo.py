@@ -158,7 +158,7 @@ def scores(now: float) -> list[dict]:
             b(tp <= -1.0, round(tp, 1), "True peak", "<= -1.0 dBTP"),
             b(sub <= -30, round(sub, 1), "Sub mono S/M", "<= -30 dB"),
             b(corr >= 0.3, round(corr, 2), "Stereo corr", ">= 0.3 per band"),
-            {**b(knock >= 3, round(knock, 1), "Kick knock", ">= +3 dB (100-250 Hz)"),
+            {**b(knock >= 3, round(knock, 1), "Kick knock", ">= +3 dB"),
              "status": "pass" if knock >= 3 else "warn"},
             {"label": "vs SIFRES", "value": f"{dist:.1f} dB", "target": "band distance (lower = closer)",
              "status": "info", "detail": f"HF tilt {bands['air 6-20k']:+.1f} dB"},

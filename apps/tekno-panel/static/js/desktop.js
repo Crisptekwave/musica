@@ -90,7 +90,9 @@
     const svcs = h.services || [];
     const vr = g.ok ? g.mem_used / g.mem_total : 0;
     const k = [];
-    k.push(`<div class="kpi ${a.status === "generating" ? "good" : a.ok ? "" : "bad"}">ACE <b>${esc(a.status || "?")}${a.job ? ` ${Number(a.progress ?? 0)}%` : ""}</b>${a.job ? `<span class="mono">${esc(a.job.card)}</span>` : ""}</div>`);
+    k.push(`<div class="kpi ${a.status === "generating" ? "good" : a.ok ? "" : "bad"}">ACE <b>${esc(a.status || "?")}${a.job ? ` ${Number(a.progress ?? 0)}%` : ""}</b>${a.job ? `<span class="mono">${esc(a.job.card || "UI take")}</span>` : ""}</div>`);
+    const pr = snap.processes || [];
+    k.push(`<div class="kpi ${pr.length ? "good" : ""}" title="${esc(pr.map(p => `${p.script} · ${p.card || "?"} · pid ${p.pid}`).join("\n") || "no lane script running")}">Running <b>${pr.length ? esc(pr[pr.length - 1].script) : "–"}</b>${pr.length > 1 ? `<span class="mono">+${pr.length - 1}</span>` : ""}</div>`);
     if (g.ok) {
       k.push(`<div class="kpi">GPU <b>${Math.round(g.util || 0)}%</b><span class="mini"><i style="width:${Math.round(g.util || 0)}%"></i></span></div>`);
       k.push(`<div class="kpi ${vr > 0.97 ? "warn" : ""}">VRAM <b>${(g.mem_used / 1024).toFixed(1)}/${(g.mem_total / 1024).toFixed(0)}G</b></div>`);
@@ -144,7 +146,8 @@
         if (!el) { el = document.createElement("div"); el.className = "tcard"; el.dataset.slug = t.slug; S.cards.set(t.slug, el); }
         const moved = S.prevLanes[t.slug] && S.prevLanes[t.slug] !== t.lane;
         S.prevLanes[t.slug] = t.lane;
-        const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id, t.current_task?.last_error, S.drawer?.slug === t.slug]);
+        const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id, t.current_task?.last_error, S.drawer?.slug === t.slug,
+          t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm]);
         if (el.dataset.key !== key) {
           el.dataset.key = key;
           el.className = `tcard state-${t.state}${S.drawer?.slug === t.slug ? " sel" : ""}`;
@@ -160,14 +163,16 @@
   function cardHtml(t) {
     const sb = t.last_sendback;
     const err = t.state === "failed" && t.current_task?.last_error && !(sb && sb.task_id === t.current_task.id) ? `<div class="tc-err">${esc(t.current_task.last_error)}</div>` : "";
-    const note = t.files_lane && t.files_lane !== t.lane && t.state !== "done" ? `<div class="tc-note">on disk: ${esc(t.files_lane)}</div>` : "";
+    const r = (t.runs || [])[(t.runs || []).length - 1];
+    const note = t.board_behind ? `<div class="tc-note" title="Board last moved ${esc(Live.ago(t.board_activity))}, card folder ${esc(Live.ago(t.disk_mtime))}">board behind disk${r ? ` · ${esc(r.name)} ${esc(r.verdict || "")}${r.draft != null ? " " + Live.num(r.draft) : ""}` : ""}</div>`
+      : t.files_lane && t.files_lane !== t.lane && t.state !== "done" ? `<div class="tc-note">on disk: ${esc(t.files_lane)}</div>` : "";
     const act = t.lane === "Review" && t.review_task_id ? `<div class="tc-actions">
         <button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject</button></div>` : "";
     return `<div class="tc-slug" title="${esc(t.slug)}">${esc(t.slug)}</div>
       <div class="tc-top"><span class="pill sm ${esc(t.state)}">${esc(STATE_LABEL[t.state] || t.state)}</span>${t.loops ? `<span class="tc-loop">↺${Number(t.loops)}</span>` : ""}<b class="tc-pct">${Number(t.progress) || 0}%</b></div>
       <div class="tc-bar"><i style="width:${Math.max(2, Number(t.progress) || 0)}%"></i></div>
-      ${sb ? `<div class="tc-back"><b>${esc(sb.from || "?")} → ${esc(sb.to)}</b> ${esc(sb.reason)}</div>` : ""}${err}${note}${act}`;
+      ${t.live ? `<div class="tc-live" title="${esc(t.live.script)}${t.live.pid ? " · pid " + Number(t.live.pid) : ""} · seen via ${esc(t.live.via)}"><i></i><span>${esc(t.live.script)}</span></div>` : ""}${sb ? `<div class="tc-back${sb.hypothetical ? " dry" : ""}"><b>${esc(sb.from || "?")} → ${esc(sb.to)}</b>${sb.hypothetical ? " (dry run)" : ""} ${esc(sb.reason)}</div>` : ""}${err}${note}${act}`;
   }
 
   // ---------------- drawer (track or lane details) ----------------
@@ -182,18 +187,26 @@
       if (!t) { body.innerHTML = `<h2>${esc(S.drawer.slug)}</h2><p class="muted">This track is no longer on the board.</p>`; return; }
       const audio = (S.snap.audio || []).filter(a => a.card === t.slug);
       const score = (S.snap.scores || []).find(s => s.card === t.slug);
-      const key = JSON.stringify([t, audio.map(a => a.url + a.mtime), score?.mtime, S.nowUrl]);
+      const msgs = (S.snap.chat?.messages || []).filter(m => m.thread === `card-${t.slug}`);
+      const key = JSON.stringify([t, audio.map(a => a.url + a.mtime), score?.mtime, S.nowUrl, msgs.length]);
       if (body.dataset.key === key) return;
       body.dataset.key = key;
       const chain = (t.tasks || []).map(x => `<div class="chain-row"><i class="cd ${esc(x.status)}"></i><span>${esc(x.lane || "?")}</span><span class="id">${esc(x.id)}</span><span class="st">${esc(x.status)}</span></div>`).join("");
       body.innerHTML = `<h2>${esc(t.slug)}</h2>
-        <div><span class="pill ${esc(t.state)}">${esc(STATE_LABEL[t.state] || t.state)}</span> <span class="muted">lane <b style="color:var(--text)">${esc(t.lane)}</b>${t.loops ? ` · <span style="color:var(--amber)">↺ ${Number(t.loops)} loops</span>` : ""}${t.files_lane && t.files_lane !== t.lane ? ` · on disk: ${esc(t.files_lane)}` : ""}</span></div>
+        <div><span class="pill ${esc(t.state)}">${esc(STATE_LABEL[t.state] || t.state)}</span> <span class="muted">lane <b style="color:var(--text)">${esc(t.lane)}</b>${t.board_lane && t.board_lane !== t.lane ? ` · board: ${esc(t.board_lane)}` : ""}${t.loops ? ` · <span style="color:var(--amber)">${Live.loops(t.loops)}${t.loops_src === "disk" ? " (run logs)" : ""}</span>` : ""}${t.files_lane && t.files_lane !== t.lane ? ` · on disk: ${esc(t.files_lane)}` : ""}</span></div>
         <div class="progress"><div class="bar"><i style="width:${Math.max(2, Number(t.progress) || 0)}%"></i></div><span class="pct">${Number(t.progress) || 0}%</span></div>
+        ${Live.liveLine(t)}${Live.behindNote(t)}
+        <h3>Plan</h3>${Live.planHtml(t.plan)}
+        <h3>Runs on disk <small>${(t.runs || []).length}${t.attempts ? ` · ${t.attempts} archived attempts` : ""}</small></h3>${Live.runsHtml(t.runs)}
         ${t.lane === "Review" && t.review_task_id ? `<div class="review-actions"><button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button><button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : ""}
         ${t.current_task ? `<h3>Current task</h3><div class="mono" style="font-size:13px">${esc(t.current_task.title)}</div><div class="muted" style="font-size:12px">${esc(t.current_task.id)} · ${esc(t.current_task.status)}${t.current_task.assignee ? " · " + esc(t.current_task.assignee) : ""}</div>${t.current_task.last_error ? `<div class="tc-err" style="-webkit-line-clamp:6">${esc(t.current_task.last_error)}</div>` : ""}` : ""}
-        ${t.sendbacks?.length ? `<h3>Sent back</h3>${t.sendbacks.map(s => `<div class="sb-row"><b>${esc(s.from || "?")} → ${esc(s.to)}</b> ${esc(s.reason)}</div>`).join("")}` : ""}
+        ${t.sendbacks?.length ? `<h3>Routing</h3>${t.sendbacks.map(s => `<div class="sb-row${s.hypothetical ? " dry" : ""}"><b>${esc(s.from || "?")} → ${esc(s.to)}</b>${s.hypothetical ? " <i>dry run</i>" : ""} ${esc(s.reason)}</div>`).join("")}` : ""}
+        ${t.handoff?.length ? `<h3>Handoff</h3>${Live.handoffHtml(t.handoff)}` : ""}
         ${chain ? `<h3>Lane chain</h3><div class="chain">${chain}</div>` : ""}
-        ${score ? `<h3>Score · <span class="${score.pass ? "" : "warn-text"}">${esc(score.verdict)}</span></h3><div class="badges">${badgesHtml(score.badges)}</div>` : ""}
+        ${score ? `<h3>Score · <span class="${score.pass ? "" : "warn-text"}">${esc(score.verdict)}</span> <small>${esc(Live.ago(score.mtime))}</small></h3><div class="badges">${badgesHtml(score.badges)}</div>
+          <h3>vs SIFRES v02</h3>${Live.refHtml(score)}${score.draft_scores ? `<h3>Auto-draft <small>${Live.num(score.metrics?.draft)}/10</small></h3>${Live.draftHtml(score)}` : ""}` : ""}
+        ${Object.keys(t.reports || {}).length ? `<h3>Lane reports</h3>${Live.reportsHtml(t.reports)}` : ""}
+        <h3>Thread <small>card-${esc(t.slug)}</small></h3>${Live.threadMsgsHtml(msgs, agentColor) || `<div class="muted">No messages in this thread yet.</div>`}
         <h3>Audio <small>${audio.length} files</small></h3>
         <div class="list">${audio.length ? audio.map(a => rowHtml(a)).join("") : `<div class="muted">No renders on disk yet.</div>`}</div>`;
     } else if (S.drawer.lane) {
@@ -205,17 +218,14 @@
       const col = { working: "var(--acid)", failed: "var(--red)", waiting: "var(--uv-hot)" }[L.state] || "var(--muted)";
       const log = (L.log || []).map(x => `${x.at ? new Date(x.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}  ${x.text}`).join("\n");
       body.innerHTML = `<h2>${esc(lane)} bot</h2><span class="state-tag" style="color:${col}">${esc(L.state === "idle" ? "sleeping" : L.state)}</span>
-        <h3>Current task</h3>${L.task ? `<div class="mono" style="font-size:13px">${esc(L.task.title)}</div><div class="muted" style="font-size:12px">${esc(L.task.id || "")}${L.task.assignee ? " · " + esc(L.task.assignee) : ""}</div>${L.task.error ? `<div class="tc-err">${esc(L.task.error)}</div>` : ""}` : `<div class="muted">No card in this lane right now.</div>`}
+        <h3>Current task</h3>${L.task ? `<div class="mono" style="font-size:13px">${esc(L.task.title)}</div><div class="muted" style="font-size:12px">${esc(L.task.id || "")}${L.task.assignee ? " · " + esc(L.task.assignee) : ""}${L.task.via ? ` · seen via ${esc(L.task.via)}` : ""}${L.task.since ? ` · ${Live.dur(Date.now() / 1000 - L.task.since)}` : ""}</div>${L.task.error ? `<div class="tc-err" style="-webkit-line-clamp:8">${esc(L.task.error)}</div>` : ""}` : `<div class="muted">No card in this lane right now.</div>`}
         ${L.handoff_to ? `<p class="muted">Last hand-off → <b style="color:var(--acid)">${esc(L.handoff_to)}</b> ${ago(L.handoff_at)}</p>` : ""}
         <h3>Tracks here</h3>${here.length ? here.map(t => `<div class="sb-row" style="background:rgba(57,255,20,.05);border-color:var(--line);cursor:pointer" data-open="${esc(t.slug)}"><b style="color:var(--acid)">${esc(t.slug)}</b> ${esc(STATE_LABEL[t.state] || t.state)} · ${Number(t.progress) || 0}%</div>`).join("") : `<div class="muted">none</div>`}
         <h3>Last log lines</h3><div class="log" style="max-height:340px">${esc(log || "nothing logged yet")}</div>`;
     }
   }
 
-  function badgesHtml(badges) {
-    return (badges || []).map(b => `<div class="badge ${esc(b.status)}"><div class="l"><span>${esc(b.label)}</span><span>${b.status === "pass" ? "✔" : b.status === "fail" ? "✖" : "–"}</span></div>
-      <div class="v">${esc(b.value ?? "–")}</div><div class="t">${esc(b.target)}</div></div>`).join("");
-  }
+  function badgesHtml(badges) { return Live.badgesHtml(badges); }
   function rowHtml(a, newest) {
     return `<div class="row ${a.url === S.nowUrl ? "playing" : ""}" data-url="${esc(a.url)}"><div class="ico ${a.kind === "stem" ? "stem" : ""}">${a.kind === "stem" ? "S" : "▶"}</div>
       <div class="meta"><div class="name">${esc(a.name)}</div><div class="sub">${esc(a.card)} · ${esc(a.stage)} · ${ago(a.mtime)}${a.size ? " · " + (a.size / 1e6).toFixed(1) + " MB" : ""}</div></div>${newest ? `<span class="new-badge">NEW</span>` : ""}</div>`;
@@ -314,16 +324,25 @@
     $("#verdict-box").innerHTML = `<div><span class="mono">${esc(cur.card)}</span> <span class="muted" style="font-size:12px">${ago(cur.mtime)}${cur.duration_s ? ` · ${fmtT(cur.duration_s)}` : ""}</span>
       ${cur.hard_fails?.length ? `<div class="hard">✖ ${cur.hard_fails.map(esc).join(" · ✖ ")}</div>` : ""}</div><div class="verdict ${go ? "go" : "nogo"}">${esc(cur.verdict || (go ? "GO" : "NO-GO"))}</div>`;
     $("#badges").innerHTML = badgesHtml(cur.badges);
+    S.scoreCur = cur;
     drawScoreChart(sc);
   }
   function drawScoreChart(sc) {
+    const cur = S.scoreCur || sc[sc.length - 1];
+    const hist = (S.snap?.history || []).filter(h => h.card === cur.card);
+    if (hist.length > 1) sc = hist;  // every distinct score.json of this card: attempts, handoff, overwritten versions
+    $("#chart-note").textContent = hist.length > 1 ? `${cur.card}: ${hist.map(h => (h.runs || [h.run]).join("+")).join(" → ")}` : "one point per card";
     const m = sc.map(s => s.metrics || {}), cv = $("#score-chart");
-    if (S.chartTab === "lufs") Charts.lines(cv, [{ values: m.map(x => x.lufs), color: Charts.ACID, label: "LUFS", ok: v => Math.abs(v + 9) <= 0.5 }], { band: [-9.5, -8.5] });
+    const ref = S.chartTab === "ref";
+    cv.classList.toggle("hidden", ref); $("#ref-pane").classList.toggle("hidden", !ref);
+    if (ref) { $("#ref-pane").innerHTML = Live.refHtml(cur); return; }
+    if (S.chartTab === "knock") Charts.lines(cv, [{ values: m.map(x => x.knock), color: Charts.ACID, label: "knock dB", ok: v => v >= 3 }], { line: 3 });
+    else if (S.chartTab === "lufs") Charts.lines(cv, [{ values: m.map(x => x.lufs), color: Charts.ACID, label: "LUFS", ok: v => Math.abs(v + 9) <= 0.5 }], { band: [-9.5, -8.5] });
     else if (S.chartTab === "tp") Charts.lines(cv, [{ values: m.map(x => x.tp), color: Charts.ACID, label: "dBTP", ok: v => v <= -1 }], { line: -1 });
     else {
       const pick = (s, label, fb) => { const b = (s.badges || []).find(x => x.label === label); const v = parseFloat(b && b.value); return isNaN(v) ? fb : v; };
-      Charts.lines(cv, [{ values: sc.map(s => pick(s, "Mix Judge", s.metrics?.draft ?? null)), color: "#ffb020", label: "Mix Judge", ok: v => v >= 6.5 },
-        { values: sc.map(s => pick(s, "EarLoop", null)), color: Charts.UV, label: "EarLoop", ok: v => v >= 6.5 }], { band: [6.5, 10] });
+      Charts.lines(cv, [{ values: sc.map(s => pick(s, "Mix Judge", s.metrics?.draft ?? null)), color: "#ffb020", label: "Mix Judge / draft", ok: v => v >= 6.5 },
+        { values: sc.map(s => pick(s, "EarLoop", s.metrics?.earloop ?? null)), color: Charts.UV, label: "EarLoop", ok: v => v >= 6.5 }], { band: [6.5, 10] });
     }
   }
 
@@ -340,14 +359,12 @@
         <div><b>${h.load?.["1m"] ?? "–"}</b><span>load</span></div>`;
       Charts.spark($("#ch-gpu"), S.gpuHist, 100);
     } else $("#gpu-kv").innerHTML = `<div class="warn-text">${esc(g.error || "no GPU data")}</div>`;
-    $("#ace-box").innerHTML = `<div class="ace-line"><span class="sd ${a.ok ? "up" : "down"}" style="width:10px;height:10px;border-radius:50%;display:inline-block"></span><b>ACE-Step ${esc(a.status || "?")}</b>
-        <span class="muted mono" style="margin-left:auto;font-size:11px">${a.job ? `${esc(a.job.card)} · pid ${Number(a.job.pid)}` : ""}</span></div>
-      ${a.job ? `<div class="progress"><div class="bar"><i style="width:${Number(a.progress) || 0}%"></i></div><span class="pct">${Number(a.progress) || 0}%</span></div>` : ""}
-      <div class="log" style="margin-top:6px">${esc((a.log || []).slice(-3).join("\n") || "no log")}</div>`;
+    $("#ace-box").innerHTML = `<h4>ACE-Step</h4>${Live.aceHtml(a)}${Live.gpuAppsHtml(g)}${Live.journalHtml(h.journal)}
+      <h4>Running now</h4>${Live.procsHtml(snap.processes)}`;
     $("#disk-box").innerHTML = d.ok ? `<div class="disk-line"><b class="${d.warn ? "warn-text" : ""}">${d.free_gb} GB</b> free on ${esc(d.path)} · ${d.used_pct}% used${d.warn ? ` · <span class="warn-text">under ${d.warn_gb} GB</span>` : ""}</div>
       <div class="disk-bar ${d.warn ? "warn" : ""}" style="height:8px"><i style="width:${Number(d.used_pct) || 0}%"></i></div>` : `<span class="warn-text">${esc(d.error || "no disk data")}</span>`;
     $("#svc-box").innerHTML = (h.services || []).map(s => `<div class="svc-row"><span class="sd ${esc(s.status)}"></span><b>${esc(s.name)}</b><span class="via">${esc(s.status)} · ${esc(s.via)}</span></div>`).join("")
-      + Object.entries(snap.sources || {}).map(([k, v]) => `<div class="svc-row"><span class="sd ${v.ok ? "up" : "down"}"></span><span>source: ${esc(k)}</span><span class="via">${esc(v.ok ? "ok" : (v.error || "down"))}</span></div>`).join("");
+      + `<h4>Sources <small>last real change</small></h4>${Live.freshnessHtml(snap)}`;
   }
 
   // ---------------- chat ----------------
@@ -359,20 +376,20 @@
   }
   function renderChat(snap) {
     const c = snap.chat || {}, msgs = c.messages || [];
-    const threads = [...new Set(msgs.map(m => m.thread).filter(Boolean))];
-    const tk = threads.join("|") + S.thread;
+    const threads = c.threads || [...new Set(msgs.map(m => m.thread).filter(Boolean))].map(id => ({ id, slug: null, count: 0 }));
+    const tk = threads.map(t => t.id + t.count).join("|") + S.thread;
     if ($("#thread-row").dataset.key !== tk) {
       $("#thread-row").dataset.key = tk;
       $("#thread-row").innerHTML = threads.length ? `<button class="toggle" aria-pressed="${!S.thread}" data-thread="">All</button>` +
-        threads.slice(-6).map(t => `<button class="toggle" aria-pressed="${S.thread === t}" data-thread="${esc(t)}">${esc(t)}</button>`).join("") : "";
+        threads.slice(0, 8).map(t => `<button class="toggle" aria-pressed="${S.thread === t.id}" data-thread="${esc(t.id)}" title="${esc(t.id)}">${t.slug ? "♪ " + esc(t.slug) : esc(t.id)}${t.count ? ` <b>${Number(t.count)}</b>` : ""}</button>`).join("") : "";
     }
     const shown = msgs.filter(m => !S.thread || m.thread === S.thread);
     const box = $("#chat");
-    const key = shown.map(m => m.id).join(",") + c.status;
+    const key = shown.map(m => m.id).join(",") + c.status + S.thread + (c.identity?.name || "");
     if (box.dataset.key === key) return;
     const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 60;
     box.dataset.key = key;
-    let html = "";
+    let html = c.status === "ok" ? `<div class="mail-id">${c.identity ? `Reading as <b>${esc(c.identity.name)}</b> (read-only) · ` : ""}${esc(c.source || "")} · ${msgs.length} message${msgs.length === 1 ? "" : "s"}</div>` : "";
     if (c.status !== "ok") html += `<div class="glass" style="font-size:12px"><b style="color:var(--amber)">agent-mail: ${esc(c.status)}</b><br><span class="muted">${esc(c.error || "")}</span>
       ${(c.agents || []).length ? `<br>Agents: ${(c.agents || []).map(a => `<span class="mono" style="color:${agentColor(a.name)}">${esc(a.name)}</span>`).join(", ")}` : ""}</div>`;
     html += shown.map(m => {
@@ -381,6 +398,7 @@
         <div class="bubble"><div class="who" style="color:${col}">${esc(m.from)}</div><div class="txt">${esc(m.body || m.subject)}</div>
         <div class="meta"><span class="thread-tag">${esc(m.thread || "")}</span><span>${ago(m.ts)}</span></div></div></div>`;
     }).join("");
+    if (!shown.length && c.status === "ok") html += `<div class="empty">${S.thread ? `No messages in <b>${esc(S.thread)}</b> yet. Lanes post a one-line note here when they finish a card.` : "No messages yet."}</div>`;
     box.innerHTML = html;
     if (atBottom) box.scrollTop = box.scrollHeight;
   }

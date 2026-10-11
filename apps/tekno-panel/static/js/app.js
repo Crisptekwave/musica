@@ -151,10 +151,11 @@
       existing.delete(t.slug);
       const moved = S.prevLanes[t.slug] && S.prevLanes[t.slug] !== t.lane;
       S.prevLanes[t.slug] = t.lane;
-      const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id]);
+      const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id,
+        t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm, t.current_task?.last_error]);
       if (el.dataset.key !== key) {
         el.dataset.key = key;
-        el.className = `card glass state-${t.state}`;
+        el.className = `card glass tappable state-${t.state}`;
         el.innerHTML = cardHtml(t);
         if (moved) { el.classList.add("moved"); haptic(5); }
       }
@@ -170,19 +171,43 @@
     const rail = LANES.map((l, i) => `<i class="${i < li ? "past" : ""} ${i === li ? "cur" : ""} ${backs.has(l) && i !== li ? "back" : ""}" title="${esc(l)}"></i>`).join("");
     const sb = t.last_sendback;
     const stateLabel = { working: "working", failed: "failed", review: "review", done: "done", queued: "queued", offboard: "files only" }[t.state] || t.state;
-    const filesNote = t.files_lane && t.files_lane !== t.lane && t.state !== "done" ? `<div class="files-note">On disk it already reached <b>${esc(t.files_lane)}</b> (board says ${esc(t.lane)}).</div>` : "";
+    const filesNote = t.board_behind ? Live.behindNote(t) : t.files_lane && t.files_lane !== t.lane && t.state !== "done" ? `<div class="files-note">On disk it already reached <b>${esc(t.files_lane)}</b> (board says ${esc(t.lane)}).</div>` : "";
     const err = t.state === "failed" && t.current_task?.last_error && !(sb && sb.task_id === t.current_task.id) ? `<div class="sendback"><b>Error:</b> ${esc(t.current_task.last_error)}</div>` : "";
     const review = t.lane === "Review" && t.review_task_id ? `<div class="review-actions">
         <button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : "";
     return `<div class="card-top"><div><div class="slug">${esc(t.slug)}</div>
-        <div class="lane-name">lane <b>${esc(t.lane)}</b>${t.current_task?.assignee ? ` · ${esc(t.current_task.assignee)}` : ""}</div></div>
+        <div class="lane-name">lane <b>${esc(t.lane)}</b>${t.current_task?.assignee ? ` · ${esc(t.current_task.assignee)}` : ""}</div>${Live.planLine(t)}</div>
         <div class="pills"><span class="pill ${esc(t.state)}">${esc(stateLabel)}</span>${t.loops ? `<span class="pill loop">↺ ${Number(t.loops)}</span>` : ""}</div></div>
       <div class="rail">${rail}</div>
       <div class="rail-labels"><span>Plan</span><span>Mix</span><span>Done</span></div>
       <div class="progress"><div class="bar"><i style="width:${Math.max(2, t.progress)}%"></i></div><span class="pct">${Number(t.progress)}%</span></div>
-      ${sb ? `<div class="sendback"><b>${esc(sb.from || "?")} → ${esc(sb.to)}</b> sent it back: ${esc(sb.reason)}</div>` : ""}
+      ${Live.liveLine(t)}${Live.sendbackHtml(sb)}
       ${err}${filesNote}${review}`;
+  }
+
+  // ---------------- track details (tap a card) ----------------
+  function trackSheet(slug) {
+    const t = (S.snap?.tracks || []).find(x => x.slug === slug);
+    if (!t) return;
+    haptic(8);
+    const sc = (S.snap.scores || []).find(x => x.card === slug);
+    const msgs = (S.snap.chat?.messages || []).filter(m => m.thread === `card-${slug}`);
+    const renders = (S.snap.audio || []).filter(a => a.card === slug && a.kind === "render");
+    const backs = t.sendbacks || [];
+    openSheet(`<h2>${esc(t.slug)}</h2><div><span class="pill ${esc(t.state)}">${esc(t.state)}</span> <span class="muted">lane <b style="color:var(--text)">${esc(t.lane)}</b>${t.board_lane && t.board_lane !== t.lane ? ` · board: ${esc(t.board_lane)}` : ""}${t.loops ? ` · <span style="color:var(--amber)">${Live.loops(t.loops)}${t.loops_src === "disk" ? " (from run logs)" : ""}</span>` : ""}</span></div>
+      ${Live.liveLine(t)}${Live.behindNote(t)}
+      ${t.lane === "Review" && t.review_task_id ? `<div class="review-actions"><button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
+        <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : ""}
+      ${renders.length ? `<button class="btn approve" style="width:100%;margin-top:12px" data-play="${esc(renders[0].url)}">▶ Play newest render · ${esc(renders[0].name)} (${esc(renders[0].stage)})</button>` : ""}
+      <h3>Plan</h3>${Live.planHtml(t.plan)}
+      <h3>Runs on disk <small>${(t.runs || []).length}${t.attempts ? ` · ${t.attempts} archived attempts` : ""}</small></h3>${Live.runsHtml(t.runs)}
+      ${t.current_task?.last_error ? `<h3>Board note <small>${esc(t.current_task.title)}</small></h3><div class="log">${esc(t.current_task.last_error)}</div>` : ""}
+      ${backs.length ? `<h3>Routing</h3>${backs.map(b => Live.sendbackHtml(b)).join("")}` : ""}
+      ${sc ? `<h3>Score <small>${esc(sc.verdict)} · ${ago(sc.mtime)}</small></h3><div class="badges">${Live.badgesHtml(sc.badges)}</div>` : ""}
+      ${t.handoff?.length ? `<h3>Handoff</h3>${Live.handoffHtml(t.handoff)}` : ""}
+      ${Object.keys(t.reports || {}).length ? `<h3>Lane reports</h3>${Live.reportsHtml(t.reports)}` : ""}
+      <h3>Thread <small>card-${esc(slug)}</small></h3>${Live.threadMsgsHtml(msgs, agentColor) || `<div class="muted">No messages in this thread yet.</div>`}`);
   }
 
   // ---------------- review actions ----------------
@@ -224,7 +249,7 @@
     const col = { working: "var(--acid)", failed: "var(--red)", waiting: "var(--uv-hot)", idle: "var(--muted)" }[L.state] || "var(--muted)";
     const log = (L.log || []).map(x => `${x.at ? new Date(x.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}  ${x.text}`).join("\n");
     openSheet(`<h2>${esc(lane)} bot</h2><span class="state-tag" style="color:${col}">${esc(L.state === "idle" ? "sleeping" : L.state)}</span>
-      <h3>Current task</h3><p>${L.task ? `<span class="mono">${esc(L.task.title)}</span><br><small class="muted">${esc(L.task.id || "")} ${L.task.assignee ? "· " + esc(L.task.assignee) : ""}</small>${L.task.error ? `<br><span class="warn-text">${esc(L.task.error)}</span>` : ""}` : `<span class="muted">No card in this lane right now.</span>`}</p>
+      <h3>Current task</h3><p>${L.task ? `<span class="mono">${esc(L.task.title)}</span><br><small class="muted">${esc(L.task.id || "")} ${L.task.assignee ? "· " + esc(L.task.assignee) : ""}${L.task.via ? ` · seen via ${esc(L.task.via)}` : ""}${L.task.since ? ` · ${Live.dur(Date.now() / 1000 - L.task.since)}` : ""}</small>${L.task.error ? `<br><span class="warn-text">${esc(L.task.error)}</span>` : ""}` : `<span class="muted">No card in this lane right now.</span>`}</p>
       ${L.handoff_to ? `<p class="muted">Last hand-off → <b style="color:var(--acid)">${esc(L.handoff_to)}</b> ${ago(L.handoff_at)}</p>` : ""}
       <h3>Last log lines</h3><div class="log">${esc(log || "nothing logged yet")}</div>`);
   }
@@ -281,7 +306,8 @@
     const sc = snap.scores || [];
     if (!sc.length) {
       $("#verdict-box").innerHTML = `<div class="muted">No score.json yet. score_card.py writes one per card in the Score lane.</div>`;
-      $("#badges").innerHTML = ""; ["#ch-lufs", "#ch-tp", "#ch-judge"].forEach(id => Charts.lines($(id), []));
+      $("#badges").innerHTML = ""; $("#ref-box").innerHTML = ""; $("#hist-note").textContent = "";
+      ["#ch-lufs", "#ch-tp", "#ch-knock", "#ch-judge"].forEach(id => Charts.lines($(id), []));
       $("#score-cards").innerHTML = ""; return;
     }
     const cards = sc.map(s => s.card);
@@ -295,14 +321,20 @@
     $("#verdict-box").innerHTML = `<div><div class="mono">${esc(cur.card)}</div><div class="muted" style="font-size:12px">${ago(cur.mtime)}${cur.duration_s ? ` · ${fmtT(cur.duration_s)}` : ""}</div>
       ${cur.hard_fails?.length ? `<div class="hard">✖ ${cur.hard_fails.map(esc).join("<br>✖ ")}</div>` : ""}</div>
       <div class="verdict ${go ? "go" : "nogo"}">${esc(cur.verdict || (go ? "GO" : "NO-GO"))}</div>`;
-    $("#badges").innerHTML = (cur.badges || []).map(b => `<div class="badge ${esc(b.status)}"><div class="l"><span>${esc(b.label)}</span><span>${b.status === "pass" ? "✔" : b.status === "fail" ? "✖" : "–"}</span></div>
-      <div class="v">${esc(b.value ?? "–")}</div><div class="t">${esc(b.target)}</div></div>`).join("");
-    const m = sc.map(s => s.metrics || {});
+    $("#badges").innerHTML = Live.badgesHtml(cur.badges);
+    $("#ref-box").innerHTML = `<h3>vs SIFRES v02 <small>ref_compare.py · band level vs ref</small></h3>${Live.refHtml(cur)}
+      ${cur.draft_scores ? `<h3 style="margin-top:14px">Auto-draft <small>${Live.num(cur.metrics?.draft)}/10 · Mix Judge confirms</small></h3>${Live.draftHtml(cur)}` : ""}`;
+    // history: every distinct score.json (archived attempts, handoff copies, overwritten versions) for this card
+    const hist = (snap.history || []).filter(h => h.card === cur.card);
+    const series = hist.length > 1 ? hist : sc;
+    const m = series.map(s => s.metrics || {});
     Charts.lines($("#ch-lufs"), [{ values: m.map(x => x.lufs), color: Charts.ACID, label: "LUFS", ok: v => Math.abs(v + 9) <= 0.5 }], { band: [-9.5, -8.5] });
     Charts.lines($("#ch-tp"), [{ values: m.map(x => x.tp), color: Charts.ACID, label: "dBTP", ok: v => v <= -1 }], { line: -1 });
-    const judge = sc.map(s => { const b = (s.badges || []).find(x => x.label === "Mix Judge"); const v = parseFloat(b && b.value); return isNaN(v) ? (s.metrics?.draft ?? null) : v; });
-    const ear = sc.map(s => { const b = (s.badges || []).find(x => x.label === "EarLoop"); const v = parseFloat(b && b.value); return isNaN(v) ? null : v; });
-    Charts.lines($("#ch-judge"), [{ values: judge, color: "#ffb020", label: "Mix Judge", ok: v => v >= 6.5 }, { values: ear, color: Charts.UV, label: "EarLoop", ok: v => v >= 6.5 }], { band: [6.5, 10] });
+    const judge = series.map(s => { const b = (s.badges || []).find(x => x.label === "Mix Judge"); const v = parseFloat(b && b.value); return isNaN(v) ? (s.metrics?.draft ?? null) : v; });
+    const ear = series.map(s => { const b = (s.badges || []).find(x => x.label === "EarLoop"); const v = parseFloat(b && b.value); return isNaN(v) ? (s.metrics?.earloop ?? null) : v; });
+    Charts.lines($("#ch-judge"), [{ values: judge, color: "#ffb020", label: "Mix Judge / draft", ok: v => v >= 6.5 }, { values: ear, color: Charts.UV, label: "EarLoop", ok: v => v >= 6.5 }], { band: [6.5, 10] });
+    Charts.lines($("#ch-knock"), [{ values: m.map(x => x.knock), color: Charts.ACID, label: "knock dB", ok: v => v >= 3 }], { line: 3 });
+    $("#hist-note").textContent = series === hist ? `${hist.length} versions of ${cur.card}: ${hist.map(h => (h.runs || [h.run]).join("+")).join(" → ")}` : "one point per card";
   }
 
   // ---------------- health ----------------
@@ -320,15 +352,13 @@
       $("#gpu-name").textContent = g.name || "";
       Charts.spark($("#ch-gpu"), S.gpuHist, 100);
       $("#gpu-kv").innerHTML = `<div><b>${(g.mem_used / 1024).toFixed(1)}/${(g.mem_total / 1024).toFixed(0)}</b><span>VRAM GB</span></div>
-        <div><b>${g.temp ?? "–"}°</b><span>temp</span></div><div><b>${g.power != null ? Math.round(g.power) : "–"}W</b><span>power</span></div>`;
+        <div><b>${g.temp ?? "–"}°</b><span>temp</span></div><div><b>${g.power != null ? Math.round(g.power) : "–"}W</b><span>power</span></div>
+        <div style="grid-column:1/-1;background:none;padding:0;text-align:left">${Live.gpuAppsHtml(g)}</div>`;
     } else {
       $("#gpu-kv").innerHTML = `<div style="grid-column:1/-1" class="warn-text">${esc(g.error || "no GPU data")}</div>`;
     }
-    const a = h.ace || {};
-    $("#ace-box").innerHTML = `<div class="svc-row"><span class="sd ${a.ok ? "up" : "down"}"></span><b>${esc(a.status || "unknown")}</b>
-        <span class="via">${a.job ? `card ${esc(a.job.card)} · pid ${a.job.pid}` : ""}</span></div>
-      ${a.job ? `<div class="progress"><div class="bar"><i style="width:${a.progress || 0}%"></i></div><span class="pct">${a.progress ?? 0}%</span></div>` : ""}
-      <div class="log" style="margin-top:8px">${esc((a.log || []).join("\n") || "no log")}</div>`;
+    $("#ace-box").innerHTML = Live.aceHtml(h.ace) + Live.journalHtml(h.journal);
+    $("#proc-box").innerHTML = Live.procsHtml(snap.processes);
     const n = h.tracks_today ?? 0, cap = h.tracks_cap || 6;
     $("#cap-box").innerHTML = `<div class="cap-big">${n}<small> / ${cap}</small></div>
       <div class="segs ${n >= cap ? "full" : ""}">${Array.from({ length: cap }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</div>
@@ -339,7 +369,7 @@
       <div><b class="${d.warn ? "warn-text" : ""}" style="font-family:var(--mono);font-size:20px">${d.free_gb} GB free</b> <span class="muted">of ${d.total_gb} GB · ${d.used_pct}% used</span></div>
       ${d.warn ? `<div class="warn-text">⚠ Under ${d.warn_gb} GB: watchdog will PAUSE the machine.</div>` : ""}` : `<span class="warn-text">${esc(d.error || "no disk data")}</span>`;
     $("#svc-box").innerHTML = (h.services || []).map(s => `<div class="svc-row"><span class="sd ${esc(s.status)}"></span><b>${esc(s.name)}</b><span class="via">${esc(s.status)} · ${esc(s.via)}</span></div>`).join("") || `<span class="muted">checking…</span>`;
-    $("#src-box").innerHTML = Object.entries(snap.sources || {}).map(([k, v]) => `<div class="svc-row"><span class="sd ${v.ok ? "up" : "down"}"></span><b>${esc(k)}</b><span class="via">${esc(v.ok ? (v.path || "ok") : v.error || "down")}</span></div>`).join("");
+    $("#src-box").innerHTML = Live.freshnessHtml(snap);
   }
 
   // ---------------- chat ----------------
@@ -356,20 +386,20 @@
     if (!S.seenMsgs && msgs.length && S.screen !== "chat") S.seenMsgs = msgs.length;
     if (S.screen !== "chat") return;
     S.seenMsgs = msgs.length;
-    const threads = [...new Set(msgs.map(m => m.thread).filter(Boolean))];
-    const tkey = threads.join("|") + S.thread;
+    const threads = c.threads || [...new Set(msgs.map(m => m.thread).filter(Boolean))].map(id => ({ id, slug: null, count: 0 }));
+    const tkey = threads.map(t => t.id + t.count).join("|") + S.thread;
     if ($("#thread-row").dataset.key !== tkey) {
       $("#thread-row").dataset.key = tkey;
       $("#thread-row").innerHTML = threads.length ? `<button class="toggle" aria-pressed="${!S.thread}" data-thread="">All threads</button>` +
-        threads.map(t => `<button class="toggle" aria-pressed="${S.thread === t}" data-thread="${esc(t)}">${esc(t)}</button>`).join("") : "";
+        threads.map(t => `<button class="toggle" aria-pressed="${S.thread === t.id}" data-thread="${esc(t.id)}">${t.slug ? "♪ " + esc(t.slug) : esc(t.id)}${t.count ? ` <b>${Number(t.count)}</b>` : ""}</button>`).join("") : "";
     }
     const shown = msgs.filter(m => !S.thread || m.thread === S.thread);
     const box = $("#chat");
-    const key = shown.map(m => m.id).join(",") + c.status;
+    const key = shown.map(m => m.id).join(",") + c.status + S.thread + (c.identity?.name || "");
     if (box.dataset.key === key) return;
     const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
     box.dataset.key = key;
-    let html = "";
+    let html = c.status === "ok" ? `<div class="mail-id">${c.identity ? `Reading as <b>${esc(c.identity.name)}</b> (read-only) · ` : ""}${esc(c.source || "")} · ${msgs.length} message${msgs.length === 1 ? "" : "s"}</div>` : "";
     if (c.status !== "ok") {
       html += `<div class="glass" style="font-size:13px"><b style="color:var(--amber)">agent-mail: ${esc(c.status)}</b><br><span class="muted">${esc(c.error || "")}</span>
         ${(c.agents || []).length ? `<br><br>Agents in project: ${(c.agents || []).map(a => `<span class="mono" style="color:${agentColor(a.name)}">${esc(a.name)}</span> <small class="muted">${esc(a.program || "")}</small>`).join(", ")}` : ""}</div>`;
@@ -381,7 +411,7 @@
         <div class="bubble"><div class="who" style="color:${col}">${esc(m.from)}</div><div class="txt">${esc(m.body || m.subject)}</div>
         <div class="meta"><span class="thread-tag">${esc(m.thread || "")}</span><span>${ago(m.ts)}</span></div></div></div>`;
     }).join("");
-    if (!shown.length && c.status === "ok") html += `<div class="empty glass">No messages yet.</div>`;
+    if (!shown.length && c.status === "ok") html += `<div class="empty glass">${S.thread ? `No messages in <b>${esc(S.thread)}</b> yet.<br><small>Each lane posts a one-line note here when it finishes a card.</small>` : "No messages yet."}</div>`;
     box.innerHTML = html;
     if (atBottom) window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   }
@@ -397,7 +427,16 @@
   function wire() {
     $("#tabbar").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { haptic(6); show(b.dataset.screen); } });
     $("#lane-strip").addEventListener("click", e => { const b = e.target.closest(".lane-pill"); if (!b) return; haptic(5); S.laneFilter = b.dataset.lane || null; renderPipeline(S.snap); });
-    $("#track-cards").addEventListener("click", e => { const b = e.target.closest("[data-act]"); if (b) openReview(b.dataset.act, b.dataset.task, b.dataset.slug); });
+    $("#track-cards").addEventListener("click", e => {
+      const b = e.target.closest("[data-act]"); if (b) return openReview(b.dataset.act, b.dataset.task, b.dataset.slug);
+      const c = e.target.closest(".card[data-slug]"); if (c) trackSheet(c.dataset.slug);
+    });
+    $("#sheet-body").addEventListener("click", e => {
+      const r = e.target.closest("[data-act]"); if (r && !r.id) return openReview(r.dataset.act, r.dataset.task, r.dataset.slug);
+      const b = e.target.closest("[data-play]"); if (!b) return;
+      const a = (S.snap.audio || []).find(x => x.url === b.dataset.play);
+      if (a) { closeSheet(); show("listen"); loadTake(a); player.play(); }
+    });
     $("#sheet-backdrop").addEventListener("click", closeSheet);
     let sy = null;
     $("#sheet").addEventListener("touchstart", e => { sy = e.touches[0].clientY; }, { passive: true });

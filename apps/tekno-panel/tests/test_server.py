@@ -68,7 +68,9 @@ def test_state_live(client):
     slugs = {t["slug"]: t for t in s["tracks"]}
     assert slugs["dry-001"]["state"] == "failed"
     assert slugs["e2e-001"]["files_lane"] == "Score"
-    assert any(a["url"] == "/media/e2e-001/polish/master.wav" for a in s["audio"])
+    assert any(a["url"].startswith("/media/e2e-001/polish/master.wav?v=") for a in s["audio"])
+    m = next(a for a in s["audio"] if a["path"] == "polish/master.wav")
+    assert client.get(m["url"]).content.startswith(b"RIFF")  # the version query is ignored by the route
     assert s["reference"]["url"] == "/media-ref"
     assert s["scores"][0]["verdict"] == "NO-GO"
     assert s["health"]["disk"]["ok"]
