@@ -110,3 +110,29 @@ def test_controls_need_login_and_can_be_off(settings):
 def test_demo_actions_do_nothing(cl, settings, act):
     r = cl.post("/api/action", json={"action": "machine.pause", "demo": True}, headers={"x-tekno": "1"})
     assert r.json()["demo"] and not (settings.machine_root / "PAUSED").exists() and not act.calls
+
+
+def test_lane_run_body_returns_at_once(tmp_path, settings):
+    """The launcher must not keep the caller's pipe open while the lane runs (that looked like a failed start)."""
+    import subprocess
+    import time as _t
+    from tekno_panel.control import Controller
+    ctrl = Controller(settings, tmp_path / "data")
+    argv, _, _ = ctrl._plan("lane.run", {"card": "e2e-001", "step": "edit"}, [])
+    body = argv[argv.index("-c") + 1]
+    script = tmp_path / "slow.sh"
+    script.write_text("sleep 3; echo done \"$1\" \"$2\"\n")
+    log = tmp_path / "run.log"
+    t0 = _t.time()
+    p = subprocess.run(["bash", "-c", body, "tekno-run", str(tmp_path), str(script), "e2e-001", "edit", str(log)],
+                       capture_output=True, text=True, timeout=10)
+    assert p.returncode == 0 and p.stdout.strip() == "started"
+    assert _t.time() - t0 < 2
+    for _ in range(50):
+        if log.exists() and "done" in log.read_text():
+            break
+        _t.sleep(0.1)
+    assert log.read_text().strip() == "done e2e-001 edit"
+    bad = subprocess.run(["bash", "-c", body, "tekno-run", str(tmp_path / "missing"), str(script), "a", "b", str(log)],
+                         capture_output=True, text=True, timeout=5)
+    assert bad.returncode != 0 and "started" not in bad.stdout

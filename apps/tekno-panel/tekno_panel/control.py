@@ -237,8 +237,10 @@ class Controller:
             log = card / f"run{n}.log"
             script = str(self.s.scripts_path / "run_e2e.sh")
             # positional args only: nothing from the request is interpolated into the shell text
-            # umask 022 so the new card files stay readable like the ones from manual runs
-            body = 'umask 022; cd "$1" && setsid nohup bash "$2" "$3" "$4" > "$5" 2>&1 < /dev/null & echo started'
+            # umask 022 so the new card files stay readable like the ones from manual runs. Only the setsid command is
+            # backgrounded: `cd && setsid ... &` would leave a subshell holding our stdout pipe for the whole run, so the
+            # helper timed out and reported a run that had started as failed.
+            body = 'umask 022; cd "$1" || exit 1; setsid nohup bash "$2" "$3" "$4" > "$5" 2>&1 < /dev/null & echo started'
             # the lane user's session env: stems.py runs demucs under `systemd-run --user --scope`, which needs its bus
             run_dir = f"/run/user/{self.s.ace_uid}"
             argv = ["sudo", "-n", "-u", self.s.ace_user, "env", f"XDG_RUNTIME_DIR={run_dir}",
