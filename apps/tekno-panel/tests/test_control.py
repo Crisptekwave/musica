@@ -136,3 +136,9 @@ def test_lane_run_body_returns_at_once(tmp_path, settings):
     bad = subprocess.run(["bash", "-c", body, "tekno-run", str(tmp_path / "missing"), str(script), "a", "b", str(log)],
                          capture_output=True, text=True, timeout=5)
     assert bad.returncode != 0 and "started" not in bad.stdout
+
+
+def test_hermes_dispatch_is_gone(cl, act):
+    """Claude operates the board: the panel must never spawn Hermes workers."""
+    r = do(cl, "kanban.dispatch", passcode=cl.passcode)
+    assert r.status_code == 404 and not act.calls

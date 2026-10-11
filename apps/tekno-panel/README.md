@@ -125,7 +125,6 @@ shell string from your input. `TEKNO_CONTROLS=0` switches all of it off.
 | Run the pipeline from a step | passcode | `sudo -n -u Gebruiker` → `run_e2e.sh <card> <step>`, output to the card's next `runN.log`; refused while paused, while the card already runs, or (plan/gen) while the GPU lock is held |
 | Stop a running lane | passcode | `sudo -n kill -TERM` on the pids the process scan attributes to that card |
 | Restart a service | passcode | acestep-api, acestep-lora, acestep-ui, agent-mail (Gebruiker user units), hermes-gateway, litellm (system units) |
-| Dispatcher pass | passcode | `hermes kanban dispatch --max 3` |
 
 Passcode re-entry counts toward the login lockout. Desktop: the Controls page (also in ⌘K), and buttons in the
 track drawer. Phone: Controls card on the Machine tab, and buttons in a track's sheet.

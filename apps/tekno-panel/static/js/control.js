@@ -70,11 +70,9 @@
     note: (task, slug) => ask({ action: "card.note", params: { task_id: task }, title: `Note on ${slug || task}`, confirm: "Add note",
       body: `Adds a comment on kanban task <span class="mono">${esc(task)}</span>.`, note: { label: "Note", required: true, placeholder: "e.g. regen drop2 with a new seed" } }),
     unblock: (task, slug) => ask({ action: "card.unblock", params: { task_id: task }, title: `Unblock ${slug || task}?`, confirm: "Unblock",
-      body: `Moves <span class="mono">${esc(task)}</span> back to ready. The gateway's dispatcher may start a worker.`, note: { label: "Reason" } }),
+      body: `Moves <span class="mono">${esc(task)}</span> back to ready. Claude picks it up (the Hermes dispatcher is off).`, note: { label: "Reason" } }),
     block: (task, slug) => ask({ action: "card.block", params: { task_id: task }, title: `Block ${slug || task}?`, confirm: "Block",
       body: `Parks <span class="mono">${esc(task)}</span> as blocked.`, note: { label: "Reason", required: true } }),
-    dispatch: () => ask({ action: "kanban.dispatch", title: "Run one dispatcher pass?", confirm: "Dispatch", danger: true,
-      body: "Promotes ready cards and spawns up to 3 Hermes workers." }),
     run: (slug, step) => ask({ action: "lane.run", params: { card: slug, step }, title: `Run ${slug} from ${step}?`, confirm: "Run", danger: true,
       body: `Starts <span class="mono">run_e2e.sh ${esc(slug)} ${esc(step)}</span> as the lane user. Output goes to the card's next runN.log; the bots light up as each step runs.` }),
     stop: slug => ask({ action: "lane.stop", params: { card: slug }, title: `Stop ${slug}?`, confirm: "Stop", danger: true,
@@ -102,8 +100,7 @@
         <button class="btn approve" data-ctl="run" ${cards.length ? "" : "disabled"}>Run ▶</button></div>
         <div class="muted ctl-small">run_e2e.sh &lt;card&gt; &lt;step&gt; runs every step from there to Master + Score.</div>
         ${[...busy].map(s => `<div class="ctl-row"><span><span class="sd up" style="display:inline-block;width:8px;height:8px;border-radius:50%"></span> <b class="mono">${esc(s)}</b> <span class="muted">${esc(running.filter(p => p.card === s).map(p => p.script).join(", "))}</span></span><button class="btn reject" data-ctl="stop" data-card="${esc(s)}">Stop</button></div>`).join("")}</div>
-      <div class="ctl-sec"><b>Services</b>${(c.services || []).map(s => `<div class="ctl-row"><span><span class="sd ${esc(svcState[s] || "idle")}" style="display:inline-block;width:8px;height:8px;border-radius:50%"></span> ${esc(s)}</span><button class="ghost sm" data-ctl="restart" data-svc="${esc(s)}">Restart</button></div>`).join("")}</div>
-      <div class="ctl-sec"><div class="ctl-row"><div><b>Kanban dispatcher</b><div class="muted ctl-small">one pass: ready cards → Hermes workers</div></div><button class="ghost sm" data-ctl="dispatch">Dispatch</button></div></div>`;
+      <div class="ctl-sec"><b>Services</b>${(c.services || []).map(s => `<div class="ctl-row"><span><span class="sd ${esc(svcState[s] || "idle")}" style="display:inline-block;width:8px;height:8px;border-radius:50%"></span> ${esc(s)}</span><button class="ghost sm" data-ctl="restart" data-svc="${esc(s)}">Restart</button></div>`).join("")}</div>`;
   }
 
   function auditHtml(audit) {

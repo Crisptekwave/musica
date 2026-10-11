@@ -679,7 +679,6 @@
       items.push(snap.machine?.paused ? { k: "control", label: "Resume the machine", sub: "PAUSED", run: Control.actions.resume }
         : { k: "control", label: "Pause the machine", sub: "writes PAUSED", run: Control.actions.pause });
       (snap.controls.services || []).forEach(sv => items.push({ k: "control", label: `Restart ${sv}`, sub: "passcode", run: () => Control.actions.restart(sv) }));
-      items.push({ k: "control", label: "Dispatcher pass", sub: "passcode", run: Control.actions.dispatch });
     }
     items.push({ k: "action", label: "Toggle fullscreen", sub: "F", run: toggleFs }, { k: "action", label: "Phone view", sub: "▯", run: () => { location.href = "/?view=phone"; } });
     return items;

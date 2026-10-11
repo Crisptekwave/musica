@@ -65,10 +65,8 @@ ACTIONS = {
     "machine.resume": {"tier": "safe", "label": "Resume the machine", "help": "Removes PAUSED (also one the watchdog wrote)."},
     "card.note": {"tier": "safe", "label": "Add a note to a card", "help": "hermes kanban comment"},
     "card.unblock": {"tier": "safe", "label": "Unblock / retry a card",
-                     "help": "hermes kanban unblock: back to ready; the gateway's dispatcher may start a worker."},
+                     "help": "hermes kanban unblock: back to ready for Claude (the Hermes dispatcher is off)."},
     "card.block": {"tier": "safe", "label": "Block a card", "help": "hermes kanban block with your reason."},
-    "kanban.dispatch": {"tier": "danger", "label": "Run one dispatcher pass",
-                        "help": "hermes kanban dispatch --max 3: promotes ready cards and spawns workers."},
     "lane.run": {"tier": "danger", "label": "Run the pipeline from a step",
                  "help": "run_e2e.sh <card> <step> as the lane user, logged to the card's next runN.log."},
     "lane.stop": {"tier": "danger", "label": "Stop the running lane",
@@ -216,10 +214,6 @@ class Controller:
         if name == "card.block":
             t = self._task(params)
             return hermes + ["block", t, f"TEKNO CONTROL: {_note(params.get('note'), True, 'reason')}"], f"Block {t}", False
-        if name == "kanban.dispatch":
-            if self.paused()["paused"]:
-                raise ActionError("the machine is paused", 409)
-            return hermes + ["dispatch", "--max", "3"], "Dispatcher pass", False
         if name == "lane.run":
             slug = self._card(params)
             step = str(params.get("step", ""))
