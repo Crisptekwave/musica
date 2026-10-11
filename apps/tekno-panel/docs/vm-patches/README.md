@@ -14,3 +14,13 @@ target (and the groove formula that clamps at 10) needs recalibrating. That is t
 
 Also on the VM, not code: the Hermes kanban dispatcher is off (`kanban.dispatch_in_gateway: false` in
 `~/.hermes/config.yaml`); Claude operates the `tekno-machine` board through TEKNO CONTROL.
+
+## House style (2026-10-11, approved by Ryan)
+
+Ryan approved the Filter Sweep extended rework as the house style. Scoring now compares every track against it instead of
+SIFRES v02: `scripts/score_card.py`, `scripts/ref_compare.py` and the new `scripts/house_metrics.py`, plus
+`tools/house_profile.json`, `tools/JUDGING_TEMPLATE.md` (v2) and `tools/STYLE_BRIEF.md` on the VM. The staged originals,
+diffs and the verification (original vs patched scores for the house master, two off-style tracks, Grok's extension and
+Ryan's original) are in `/mnt/agent-data/apps/house-style/` (`verify.md`, `diffs/`); backups next to each script as
+`*.bak-house-<stamp>`. Hard gates are unchanged. The panel labels the band distance with the reference named in the
+score (`vs Filter Sweep`) and plays the house master on the A/B "B" side (`TEKNO_REFERENCE_AUDIO`, `TEKNO_REFERENCE_NAME`).

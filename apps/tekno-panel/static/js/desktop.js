@@ -259,7 +259,7 @@
   function closeModal() { $("#modal").classList.add("hidden"); $("#modal-box").innerHTML = ""; }
   function showHelp() {
     $("#modal-box").innerHTML = `<h2>Keyboard</h2><div class="keys">
-      <kbd>Space</kbd><span>play / pause</span><kbd>A</kbd> <span>take (A side)</span><kbd>B</kbd><span>SIFRES reference (B side)</span>
+      <kbd>Space</kbd><span>play / pause</span><kbd>A</kbd> <span>take (A side)</span><kbd>B</kbd><span>reference track (B side)</span>
       <kbd>← →</kbd><span>seek 5 s</span><kbd>N</kbd><span>load newest take</span><kbd>1-4</kbd><span>filter: all / working / failed / review</span>
       <kbd>/</kbd><span>find a track</span><kbd>D</kbd><span>live / demo</span><kbd>F</kbd><span>fullscreen</span><kbd>Esc</kbd><span>close drawer / dialog</span></div>
       <div class="modal-actions" style="margin-top:14px"><button class="ghost" id="help-close">Close</button></div>`;
@@ -288,7 +288,7 @@
     }
     S.audioInit = true;
     if (snap.reference) player.loadRef(snap.reference.url);
-    $("#ab-b").textContent = snap.reference ? "B · SIFRES" : "B · (no ref)";
+    $("#ab-b").textContent = snap.reference ? `B · ${snap.reference.name || "reference"}` : "B · (no ref)";
     $("#ab-b").disabled = !snap.reference;
     if (!S.nowUrl && list.length) loadTake(list.find(a => a.kind === "render") || list[0]);
     const cards = [...new Set(list.map(a => a.card))];

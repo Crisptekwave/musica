@@ -287,7 +287,7 @@ def test_real_score_badges(machine_tree):
 def test_ref_compare_error_string():
     b = {x["label"]: x for x in files.score_badges(__import__("pathlib").Path("/nonexistent"),
                                                     dict(REAL_SCORE, vs_sifres="not measured: boom"))}
-    assert b["vs SIFRES"]["status"] == "na" and "boom" in b["vs SIFRES"]["detail"]
+    assert b["vs reference"]["status"] == "na" and "boom" in b["vs reference"]["detail"]
 
 
 def test_scan_cards_plan_runs_handoff_history(machine_tree):
@@ -516,3 +516,11 @@ def test_agent_aliases_label_messages_and_agents():
     assert chat["messages"][0]["to_labels"] == ["Hermes", "Grok Bot"]
     assert chat["messages"][1]["label"] == "Someone"
     assert [a["label"] for a in chat["agents"]] == ["Grok Bot", "Tekno-Panel"]
+
+
+def test_reference_label_follows_score():
+    assert files.ref_short("Filter Sweep (extended rework)") == "Filter Sweep"
+    assert files.ref_short(None) == "SIFRES" and files.ref_short("") == "SIFRES"
+    house = files.ref_compare({"vs_sifres": {"band_rms_dist_dB": 1.2, "reference": "Filter Sweep (extended rework)"}})
+    old = files.ref_compare({"vs_sifres": {"band_rms_dist_dB": 2.3}})
+    assert house["ref_name"] == "Filter Sweep" and old["ref_name"] == "SIFRES"

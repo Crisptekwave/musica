@@ -243,7 +243,8 @@ def _judge(root: Path, score: dict) -> dict:
 
 
 def ref_compare(score: dict) -> dict | None:
-    """ref_compare.py output (score.json 'vs_sifres'): band levels vs SIFRES v02, crest, 1-4k width."""
+    """ref_compare.py output (score.json 'vs_sifres', kept as the key name): band levels vs the reference (the house
+    master since 2026-10-11, SIFRES v02 before), crest, 1-4k width."""
     vs = score.get("vs_sifres")
     if isinstance(vs, str):
         return {"error": vs[:200]}
@@ -255,7 +256,15 @@ def ref_compare(score: dict) -> dict | None:
         "dist": _num(vs.get("band_rms_dist_dB")), "tilt": _num(vs.get("hf_tilt_dB")),
         "crest": _num(vs.get("crest_dB")), "crest_ref": _num(vs.get("crest_ref_dB")),
         "corr14": _num(vs.get("corr_1-4k")), "corr14_ref": _num(vs.get("corr_1-4k_ref")),
+        "ref_name": ref_short(vs.get("reference")),
     }
+
+
+def ref_short(name) -> str:
+    """'Filter Sweep (extended rework)' -> 'Filter Sweep'; scores from before the house style named no reference."""
+    if not isinstance(name, str) or not name.strip():
+        return "SIFRES"
+    return name.split("(")[0].strip()[:24] or "SIFRES"
 
 
 def _list(x) -> list:
@@ -320,11 +329,11 @@ def score_badges(root: Path, score: dict) -> list[dict]:
         ear_badge = _badge(None, "not measured", "EarLoop", f">= {JUDGE_MIN}",
                            detail=str(ear)[:120] if isinstance(ear, str) else None)
     if ref and "error" not in ref and ref["dist"] is not None:
-        ref_badge = _badge(None, f"{ref['dist']:.1f} dB", "vs SIFRES", "band distance (lower = closer)", status="info",
+        ref_badge = _badge(None, f"{ref['dist']:.1f} dB", f"vs {ref['ref_name']}", "band distance (lower = closer)", status="info",
                            detail=f"HF tilt {ref['tilt']:+.1f} dB · crest {ref['crest']} vs {ref['crest_ref']} dB"
                            if ref["tilt"] is not None else None)
     else:
-        ref_badge = _badge(None, "not measured", "vs SIFRES", "band distance (lower = closer)",
+        ref_badge = _badge(None, "not measured", f"vs {(ref or {}).get('ref_name') or 'reference'}", "band distance (lower = closer)",
                            detail=(ref or {}).get("error"))
     return [
         _badge(bpm_ok, bpm, "BPM", f"{target:g} ±{BPM_TOL}" if target else "160-180 const", detail=detail),

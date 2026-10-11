@@ -117,6 +117,7 @@ class Settings:
     agent_mail_projects: tuple = ("hermes-music", "tekno-machine")
     # agent-mail handle -> who it is (the team-mail identities: Grok Bot, Hermes, Claude)
     agent_aliases: str = "LavenderElk=Grok Bot,CopperHeron=Hermes,SilverOtter=Claude,Tekno-Panel=Panel"
+    reference_name: str = "SIFRES v02"  # label of the A/B reference (TEKNO_REFERENCE_AUDIO)
     tracks_per_day_cap: int = 6
     push_interval: float = 1.5
     services: list[dict] = field(default_factory=list)
@@ -172,6 +173,7 @@ def load_settings() -> Settings:
         agent_mail_url=_env("TEKNO_AGENT_MAIL_URL", "http://100.84.117.126:8765/mcp/"),
         agent_mail_project=_env("TEKNO_AGENT_MAIL_PROJECT", "hermes-music"),
         agent_mail_projects=tuple(x.strip() for x in _env("TEKNO_AGENT_MAIL_PROJECTS", "hermes-music,tekno-machine").split(",") if x.strip()),
+        reference_name=_env("TEKNO_REFERENCE_NAME", "SIFRES v02"),
         agent_aliases=_env("TEKNO_AGENT_ALIASES", "LavenderElk=Grok Bot,CopperHeron=Hermes,SilverOtter=Claude,Tekno-Panel=Panel"),
         tracks_per_day_cap=int(_env("TEKNO_TRACKS_PER_DAY_CAP", "6")),
         push_interval=float(_env("TEKNO_PUSH_INTERVAL", "1.5")),

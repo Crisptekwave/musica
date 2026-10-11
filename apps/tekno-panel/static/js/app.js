@@ -313,7 +313,7 @@
     trackNewAudio(snap);
     const list = snap.audio || [];
     if (snap.reference) player.loadRef(snap.reference.url);
-    $("#ab-b").textContent = snap.reference ? "B · SIFRES" : "B · (no ref)";
+    $("#ab-b").textContent = snap.reference ? `B · ${snap.reference.name || "reference"}` : "B · (no ref)";
     $("#ab-b").disabled = !snap.reference;
     const cards = [...new Set(list.map(a => a.card))];
     if (!S.nowUrl && list.length) { const first = list.find(a => a.kind === "render") || list[0]; loadTake(first); }

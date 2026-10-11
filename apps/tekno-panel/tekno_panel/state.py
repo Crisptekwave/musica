@@ -298,7 +298,7 @@ class Collector:
             "mode": "live", "ts": now,
             "tracks": tracks,
             "lanes": lanes, "audio": audio,
-            "reference": {"name": "SIFRES v02", "url": "/media-ref"} if ref.exists() else None,
+            "reference": {"name": s.reference_name, "url": "/media-ref"} if ref.exists() else None,
             "scores": self._disk["scores"],
             "history": self._history(),
             "handoff": self._disk.get("handoff") or [],
