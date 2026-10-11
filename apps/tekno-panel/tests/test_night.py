@@ -97,7 +97,8 @@ def digest_env(tmp_path, monkeypatch):
     (tmp_path / "fb" / "handoff").mkdir()
     (tmp_path / "fb" / "runs").mkdir()
     monkeypatch.setattr(agent_status, "DIR", tmp_path / "agents")
-    monkeypatch.setattr(qn, "LLM", "http://127.0.0.1:9")  # nothing listens: local model not answering
+    monkeypatch.setattr(qn.llm, "LOCAL", ("http://127.0.0.1:9", "x"))  # nothing listens: local model not answering
+    monkeypatch.setattr(qn.llm, "GATEWAY", ("", "auto"))
     db = tmp_path / "kanban.db"
     con = sqlite3.connect(db)
     con.execute("create table tasks (title text, status text)")

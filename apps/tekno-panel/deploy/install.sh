@@ -42,7 +42,7 @@ sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-control-helper.service" > "$
 # team chat (approved by the owner): team-mail CLI + alert relay (new panel alerts -> agent-mail thread panel-errors)
 AM="$HOME/.config/agent-mail"; mkdir -p "$AM" "$HOME/.local/bin"; chmod 700 "$AM"
 install -m 755 "$APP_DIR/tools/team_mail.py" "$APP_DIR/tools/alert_relay.py" "$APP_DIR/tools/fallback_watchdog.py" \
-  "$APP_DIR/tools/agent_status.py" "$APP_DIR/tools/reaper_snap.py" "$APP_DIR/tools/qwen_night.py" "$AM/"
+  "$APP_DIR/tools/agent_status.py" "$APP_DIR/tools/reaper_snap.py" "$APP_DIR/tools/qwen_night.py" "$APP_DIR/tools/llm.py" "$AM/"
 ln -sf "$AM/team_mail.py" "$HOME/.local/bin/team-mail"
 ln -sf "$AM/agent_status.py" "$HOME/.local/bin/tekno-agent"
 # agent status files (tekno-agent): a group-writable setgid folder like the card folders, so every agent can write

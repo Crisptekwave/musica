@@ -31,11 +31,11 @@ import sqlite3
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_status  # noqa: E402
+import llm  # noqa: E402
 import team_mail  # noqa: E402
 
 LIB = Path(os.environ.get("TEKNO_LIBRARY_DIR", "/mnt/agent-data/music_library"))
@@ -45,8 +45,8 @@ HANDOFF = Path(os.environ.get("TEKNO_HANDOFF_DIR", "/mnt/agent-data/tekno_machin
 CC_JOBS = Path(os.environ.get("TEKNO_CC_JOBS_DIR", "/mnt/agent-data/apps/tekno-panel-next/cc_jobs"))
 KANBAN_DB = Path(os.environ.get("TEKNO_KANBAN_DB", os.path.expanduser("~/.hermes/kanban/boards/tekno-machine/kanban.db")))
 DATA_DISK = os.environ.get("TEKNO_DATA_DISK", "/mnt/agent-data")
-LLM = os.environ.get("TEKNO_FALLBACK_LLM", "http://127.0.0.1:8001/v1")
-MODEL = os.environ.get("TEKNO_FALLBACK_MODEL", "qwen3-coder")
+ORDER = os.environ.get("TEKNO_NIGHT_ORDER", "local,gateway").split(",")  # local Qwen first; the gateway if it is down
+LAST = {"used": "?"}  # which endpoint:model answered last (recorded per tag)
 MAX_TAG = int(os.environ.get("TEKNO_NIGHT_MAX_TAG", 1500))
 BATCH = 20
 CLAP_ID = os.environ.get("TEKNO_CLAP_MODEL", "laion/larger_clap_music")
@@ -105,11 +105,10 @@ Only state what the facts say. No greetings, no advice beyond the facts, no numb
 
 # ---------------------------------------------------------------- shared
 def chat(system: str, user: str, max_tokens: int = 2048) -> str:
-    body = {"model": MODEL, "temperature": 0.1, "max_tokens": max_tokens,
+    body = {"temperature": 0.1, "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-    req = urllib.request.Request(LLM + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        return json.loads(r.read())["choices"][0]["message"].get("content") or ""
+    msg, LAST["used"] = llm.complete(body, ORDER)
+    return msg.get("content") or ""
 
 
 def roster(fn: str, *args) -> None:
@@ -394,7 +393,7 @@ def tag(limit: int, dry: bool) -> int:
             for n, (rel, m) in enumerate(batch):
                 verdict, dropped = check(rel, m, answers.get(n, {}))
                 stats["dropped"] += len(dropped)
-                db[rel] = {**m, **verdict, "by": MODEL if n in answers else "runner", "at": int(time.time())}
+                db[rel] = {**m, **verdict, "by": LAST["used"] if n in answers else "runner", "at": int(time.time())}
                 stats["tagged"] += 1
                 if dropped:
                     lf.write(f"{rel}: dropped {', '.join(dropped)}\n")
@@ -470,11 +469,9 @@ def facts(now: float | None = None) -> list[str]:
             out.append(f"{label}: {u.free / 2**30:.1f} GB free ({100 * u.used / (u.used + u.free):.0f}% used)")  # as df
         except OSError:
             pass
-    try:
-        with urllib.request.urlopen(LLM + "/models", timeout=5):
-            out.append("local model: answering")
-    except OSError:
-        out.append("local model: NOT answering")
+    out.append("local model: " + ("answering" if llm.up(["local"]) else "NOT answering"))
+    if llm.GATEWAY[0]:
+        out.append("FreeLLMAPI gateway: " + ("answering" if llm.up(["gateway"]) else "NOT answering"))
     t = load_json(NIGHT / "tag_last.json", None)
     if t:
         out.append(f"sample tagging: {t.get('tagged', 0)} tagged last night ({t.get('total', 0)} total), "

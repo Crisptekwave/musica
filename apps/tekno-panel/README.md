@@ -231,5 +231,9 @@ The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` 
   (`night/clap/`) for `qwen_night.py find "distorted gabber kick"` / `find --like <path>`. Python: `/mnt/agent-data/apps/models/venv`.
   `digest` posts a <= 5 line summary plus the raw facts of the last 24 h to agent-mail thread `morning-report` as qwen.
   Both report as `qwen-night` in the agent roster. The phone Bots tab shows one creature per roster agent.
+- **FreeLLMAPI gateway** (`tools/llm.py`): set `TEKNO_GATEWAY_LLM` (e.g. `http://100.84.117.126:3001/v1`) and
+  `TEKNO_GATEWAY_MODEL` to let the fallback think with a bigger free model (`TEKNO_FALLBACK_ORDER`, default
+  `gateway,local`) and give the night shift a backup (`TEKNO_NIGHT_ORDER`, default `local,gateway`). The key is read
+  from the `FREELLMAPI_API_KEY` line in `~/.hermes/.env`, never copied. Down or rate-limited endpoints are skipped.
 - **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
 - ACE-Step probes are off unless `TEKNO_ACE_ENABLED=1`.
