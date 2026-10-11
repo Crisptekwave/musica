@@ -112,6 +112,14 @@ def test_media_traversal_blocked(client, path):
     assert client.get(path).status_code == 404
 
 
+def test_desktop_page_is_public_shell(client):
+    r = client.get("/desktop")
+    assert r.status_code == 200 and "desktop.js" in r.text
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    assert client.get("/static/js/desktop.js").status_code == 200
+    assert client.get("/static/desktop.css").status_code == 200
+
+
 def test_security_headers(client):
     r = client.get("/")
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]

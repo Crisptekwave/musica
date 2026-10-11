@@ -19,6 +19,23 @@ never writes the DB directly. It never starts, stops or restarts anything.
 | **Machine** | GPU util and VRAM gauges, temperature and power, ACE job + progress, tracks today vs the cap (6), disk free on `/mnt/agent-data` (red under 20 GB), status of acestep-api, acestep-lora, hermes-gateway and litellm, and the health of each data source. |
 | **Chat** | The agent-mail threads as a group chat between Grok Bot, Mix Judge, Claude and Hermes. |
 
+### Desktop control room (`/desktop`)
+
+On a wide screen with a mouse (≥ 1100 px, fine pointer, not the installed phone app), `/` opens
+`/desktop`: every panel at once, sized to fit one 1440×900 or 1920×1080 screen without scrolling.
+
+- **Pipeline board**: a real kanban with the 13 lanes as columns. Empty lanes fold into thin strips;
+  filter by working / failed / review or search by slug. Click a card for the **detail drawer**: lane
+  chain with task ids, every send-back with its reason, current task and error, the card's score
+  badges, and its renders and stems (click to play). Approve / Reject + note work from the card or the drawer.
+- **Live bots strip**: the same creatures, 12 in one line on wide screens. Click one for its task and log.
+- **Listen**, **Scores** (badges plus a tabbed history chart), **Machine** and **Agent chat** panels stay visible.
+- A KPI bar at the top shows ACE job and progress, GPU, VRAM, disk, tracks today, run/fail/review counts and services.
+- Keyboard: `Space` play/pause, `A`/`B` take or SIFRES, `←`/`→` seek, `N` newest take, `1`-`4` filter,
+  `/` search, `D` live/demo, `F` fullscreen (wall display), `Esc` close, `?` help.
+
+The ▯ button (or `/?view=phone`) switches a desktop browser to the phone UI; opening `/desktop` switches back.
+
 The **LIVE / DEMO** chip at the top switches your phone to demo mode: fake tracks loop through
 the lanes, bots hand off, a synthetic 165 BPM loop plays, and messages keep coming in. Demo
 review buttons don't write anything.
@@ -113,10 +130,10 @@ app shell; live data, audio and the WebSocket always go to the network.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q                       # 53 tests: kanban parsing, scores, auth, review, media, demo
+.venv/bin/python -m pytest -q                       # 55 tests: kanban parsing, scores, auth, review, media, demo
 TEKNO_DEMO=1 TEKNO_STATE_DIR=/tmp/tp .venv/bin/python -m tekno_panel.server   # http://127.0.0.1:3020
 ```
 
-The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` (screens + socket),
+The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` (phone screens + socket), `js/desktop.js` + `desktop.css` (desktop room),
 `js/bots.js` (creatures), `js/player.js` (Web Audio), `js/charts.js`. Icons come from
 `tools/make_icons.py` (Pillow).

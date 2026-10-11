@@ -140,3 +140,11 @@ def test_ace_log_prefix_stripped(tmp_path):
     log.write_text("2026-10-11 09:34:21.689 | INFO     | acestep.core.generation.handler.gen:_build:38 - [generate_music] VAE decode done\n")
     a = machine.ace("http://127.0.0.1:9", tmp_path / "nolock", log)
     assert a["log"][-1] == "[generate_music] VAE decode done"
+
+
+def test_demo_tracks_have_task_chain():
+    for t in demo.tracks(1_791_700_000):
+        lanes = [x["lane"] for x in t["tasks"]]
+        assert lanes and lanes[0] == "Plan"
+        if t["lane"] != "Done":
+            assert lanes[-1] == t["lane"] and all(x["status"] == "done" for x in t["tasks"][:-1])

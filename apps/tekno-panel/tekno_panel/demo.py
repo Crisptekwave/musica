@@ -59,7 +59,10 @@ def _track(i: int, slug: str, now: float) -> dict:
         "current_task": {"id": tid, "title": f"[{slug}] {lane.upper()}", "status": "review" if lane == "Review" else "running",
                          "assignee": f"tekno-{lane.lower().replace(' ', '-')}", "last_error": None},
         "review_task_id": tid if lane == "Review" else None,
-        "tasks": [], "created_at": int(now - t), "last_activity": int(now - (t % STEP_S)),
+        "tasks": [{"id": f"t_{abs(hash((slug, cycle, ln))) % 16**8:08x}", "lane": ln,
+                   "status": "done" if k < pos else ("review" if ln == "Review" else ("blocked" if state == "failed" else "running")),
+                   "title": f"[{slug}] {ln.upper()}"} for k, ln in enumerate(PIPE[:pos + 1])],
+        "created_at": int(now - t), "last_activity": int(now - (t % STEP_S)),
         "age_s": int(t), "files_lane": lane if lane != "Done" else "Review", "lane_frac": round(frac, 3),
     }
 

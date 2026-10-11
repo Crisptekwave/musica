@@ -23,6 +23,15 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
+  // Wide screen + mouse (not the installed phone app) -> desktop control room. ?view=phone keeps this UI.
+  const view = new URLSearchParams(location.search).get("view") || store.get("tekno-view", "");
+  if (view !== "phone" && matchMedia("(min-width: 1100px) and (pointer: fine)").matches &&
+      !matchMedia("(display-mode: standalone)").matches && !navigator.standalone) {
+    location.replace("/desktop" + location.search);
+    return;
+  }
+  if (view === "phone") store.set("tekno-view", "phone");
+
   const S = {
     snap: null, screen: store.get("tekno-screen", "pipeline"), demo: false, laneFilter: null,
     prevLanes: {}, listenCard: null, scoreCard: null, thread: null, follow: true, nowUrl: null,

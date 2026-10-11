@@ -174,6 +174,10 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
     async def index():
         return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
+    @app.get("/desktop")
+    async def desktop():
+        return FileResponse(STATIC / "desktop.html", headers={"Cache-Control": "no-cache"})
+
     @app.get("/sw.js")
     async def sw():
         return FileResponse(STATIC / "sw.js", media_type="text/javascript",
