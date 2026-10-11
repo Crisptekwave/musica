@@ -219,8 +219,9 @@ body.desk { font-size: 14px; overflow-x: hidden; }
 .tc-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--acid); box-shadow: 0 0 8px var(--acid); flex: 0 0 auto;
   animation: beat .3636s infinite alternate; }
 .tc-live span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ref-pane .lv-kv.sm { grid-template-columns: repeat(4, auto auto); gap: 2px 6px; }
-.ref-pane .lv-kv.sm span { font-size: 9px; margin-right: 6px; }
+.ref-pane .lv-kv.sm { display: flex; flex-wrap: wrap; gap: 2px 6px; }
+.ref-pane .lv-kv.sm span { font-size: 9px; margin-right: 8px; }
+.chart-tabs .seg button { padding: 5px 8px; font-size: 11px; }
 .tc-back.dry { background: rgba(157,77,255,.08); border-color: var(--line-uv); }
 .tc-back.dry b { color: var(--uv-hot); }
 .sb-row.dry { background: rgba(157,77,255,.08); border-color: var(--line-uv); }

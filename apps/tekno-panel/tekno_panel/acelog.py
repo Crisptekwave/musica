@@ -189,8 +189,8 @@ def lora_log(path: Path) -> dict | None:
                 data = json.loads('"' + m.group("data") + '"')
             except json.JSONDecodeError:
                 data = m.group("data")
-            last = {"ok": data.startswith("✅"), "text": data.lstrip("✅❌⚠️ ").strip()[:200],
-                    "at": mtime}
+            text = re.sub(r" from /\S+", "", data.lstrip("\u2705\u274c\u26a0\ufe0f ").strip())  # drop the checkpoint path
+            last = {"ok": data.startswith("\u2705"), "text": text[:200], "at": mtime}
     return last
 
 

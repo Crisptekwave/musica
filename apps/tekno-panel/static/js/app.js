@@ -199,7 +199,7 @@
       ${Live.liveLine(t)}${Live.behindNote(t)}
       ${t.lane === "Review" && t.review_task_id ? `<div class="review-actions"><button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : ""}
-      ${renders.length ? `<button class="btn approve" style="width:100%;margin-top:12px" data-play="${esc(renders[0].url)}">▶ Play newest render · ${esc(renders[0].name)} (${esc(renders[0].stage)})</button>` : ""}
+      ${renders.length ? `<button class="toggle lv-play" data-play="${esc(renders[0].url)}">▶ Play newest render · ${esc(renders[0].name)} · ${esc(renders[0].stage)} · ${ago(renders[0].mtime)}</button>` : ""}
       <h3>Plan</h3>${Live.planHtml(t.plan)}
       <h3>Runs on disk <small>${(t.runs || []).length}${t.attempts ? ` · ${t.attempts} archived attempts` : ""}</small></h3>${Live.runsHtml(t.runs)}
       ${t.current_task?.last_error ? `<h3>Board note <small>${esc(t.current_task.title)}</small></h3><div class="log">${esc(t.current_task.last_error)}</div>` : ""}
@@ -352,8 +352,8 @@
       $("#gpu-name").textContent = g.name || "";
       Charts.spark($("#ch-gpu"), S.gpuHist, 100);
       $("#gpu-kv").innerHTML = `<div><b>${(g.mem_used / 1024).toFixed(1)}/${(g.mem_total / 1024).toFixed(0)}</b><span>VRAM GB</span></div>
-        <div><b>${g.temp ?? "–"}°</b><span>temp</span></div><div><b>${g.power != null ? Math.round(g.power) : "–"}W</b><span>power</span></div>
-        <div style="grid-column:1/-1;background:none;padding:0;text-align:left">${Live.gpuAppsHtml(g)}</div>`;
+        <div><b>${g.temp ?? "–"}°</b><span>temp</span></div><div><b>${g.power != null ? Math.round(g.power) : "–"}W</b><span>power</span></div>`;
+      $("#gpu-apps").innerHTML = Live.gpuAppsHtml(g);
     } else {
       $("#gpu-kv").innerHTML = `<div style="grid-column:1/-1" class="warn-text">${esc(g.error || "no GPU data")}</div>`;
     }

@@ -126,9 +126,12 @@
     return out;
   }
 
+  // systemd lifecycle of the ACE units; a normal stop logs exit 143 + "Failed with result 'exit-code'", which is noise
+  const JOURNAL_NOISE = /Consumed .* CPU time|Failed with result 'exit-code'|Main process exited, code=exited, status=143/;
   function journalHtml(rows) {
-    if (!rows?.length) return "";
-    return `<div class="log lv-journal">${esc(rows.slice(-6).map(r => `${hm(r.at)}  ${r.text.replace(/ - ACE-Step.*$/, "").replace(/ - Load default.*$/, "")}`).join("\n"))}</div>`;
+    const keep = (rows || []).filter(r => !JOURNAL_NOISE.test(r.text));
+    if (!keep.length) return "";
+    return `<div class="log lv-journal">${esc(keep.slice(-6).map(r => `${hm(r.at)}  ${r.text.replace(/ - ACE-Step.*$/, "").replace(/ - Load default.*$/, "")}`).join("\n"))}</div>`;
   }
 
   function gpuAppsHtml(g) {

@@ -351,3 +351,4 @@ input[type=range] { width: 100%; accent-color: var(--acid); height: 28px; }
 .mail-id b { color: var(--acid); font-family: var(--mono); }
 .sheet h3 { margin-top: 16px; }
 .card.tappable { cursor: pointer; }
+.lv-play { width: 100%; margin-top: 12px; padding: 10px 12px; text-align: left; font-size: 13px; }

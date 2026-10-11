@@ -293,7 +293,7 @@ def build_tracks(board: dict, now: float | None = None) -> list[dict]:
                               "assignee": current.assignee,
                               # blocked by hand (no worker error): the latest comment says why
                               "last_error": current.last_error or (
-                                  current.comments[-1]["body"][:300] if current.status == "blocked" and current.comments else None)},
+                                  current.comments[-1]["body"][:800] if current.status == "blocked" and current.comments else None)},
             "review_task_id": review[0].id if review else None,
             "tasks": [{"id": t.id, "lane": t.lane, "status": t.status, "title": t.title} for t in ts],
             "created_at": ts[0].created_at,
@@ -324,7 +324,7 @@ def lane_activity(board: dict, now: float | None = None, handoff_window: int = 2
             # blocked by hand (no worker error): the latest comment says why
             why = t.last_error or (t.comments[-1]["body"] if t.comments else None) or \
                 (t.runs[-1].get("summary") if t.runs else None)
-            L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee, "error": (why or "")[:300] or None}
+            L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee, "error": (why or "")[:800] or None}
         elif t.status == "review" and L["state"] == "idle":
             L["state"] = "waiting"
             L["task"] = {"id": t.id, "title": t.title, "assignee": t.assignee}
