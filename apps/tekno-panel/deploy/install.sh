@@ -38,9 +38,27 @@ fi
 [ -f "$CONF/agent_mail_agents.json" ] || { echo '[]' > "$CONF/agent_mail_agents.json"; chmod 600 "$CONF/agent_mail_agents.json"; }
 
 sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-panel.service" > "$UNIT_DIR/tekno-panel.service"
+sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-control-helper.service" > "$UNIT_DIR/tekno-control-helper.service"
+# team chat (approved by the owner): team-mail CLI + alert relay (new panel alerts -> agent-mail thread panel-errors)
+AM="$HOME/.config/agent-mail"; mkdir -p "$AM" "$HOME/.local/bin"; chmod 700 "$AM"
+install -m 755 "$APP_DIR/tools/team_mail.py" "$APP_DIR/tools/alert_relay.py" "$APP_DIR/tools/fallback_watchdog.py" "$AM/"
+ln -sf "$AM/team_mail.py" "$HOME/.local/bin/team-mail"
+cp "$APP_DIR/deploy/tekno-alert-relay.service" "$APP_DIR/deploy/tekno-alert-relay.timer" "$UNIT_DIR/"
+# Claude-limit fallback (approved by the owner: allowlist tools only, stock Qwen3-Coder on the local vLLM)
+FB="${TEKNO_FALLBACK_DIR:-/mnt/agent-data/tekno_machine/fallback}"
+if [ -d "$(dirname "$FB")" ]; then
+  mkdir -p "$FB/handoff" "$FB/runs"
+  install -m 644 "$APP_DIR/tools/FALLBACK_SOUL.md" "$FB/"
+  [ -f "$FB/MODE" ] || echo auto > "$FB/MODE"
+  cp "$APP_DIR/deploy/tekno-fallback.service" "$APP_DIR/deploy/tekno-fallback.timer" "$UNIT_DIR/"
+fi
 systemctl --user daemon-reload
-systemctl --user enable tekno-panel.service >/dev/null
-systemctl --user restart tekno-panel.service
+systemctl --user enable tekno-control-helper.service tekno-panel.service >/dev/null
+# the relay needs the agent identities (identities.json) set up first
+[ -f "$AM/identities.json" ] && systemctl --user enable --now tekno-alert-relay.timer >/dev/null
+[ -f "$UNIT_DIR/tekno-fallback.timer" ] && grep -q '"qwen"' "$AM/identities.json" 2>/dev/null \
+  && systemctl --user enable --now tekno-fallback.timer >/dev/null
+systemctl --user restart tekno-control-helper.service tekno-panel.service
 sleep 2
 systemctl --user --no-pager --lines=5 status tekno-panel.service || true
 . "$CONF/env"

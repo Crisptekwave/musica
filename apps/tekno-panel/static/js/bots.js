@@ -18,8 +18,8 @@
   }
 
   class Bots {
-    constructor(canvas, onTap) {
-      this.c = canvas; this.ctx = canvas.getContext("2d"); this.onTap = onTap;
+    constructor(canvas, onTap, opts = {}) {
+      this.c = canvas; this.ctx = canvas.getContext("2d"); this.onTap = onTap; this.opts = opts;
       this.orbs = LANES.map((l, i) => new Orb(l, i));
       this.flights = []; this.lastHandoff = {}; this.running = false; this.t0 = performance.now();
       canvas.addEventListener("click", e => this.tap(e));
@@ -33,13 +33,14 @@
       this.c.width = Math.round(w * dpr); this.c.height = Math.round(h * dpr);
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.w = w; this.h = h;
-      const cols = w > 600 ? 4 : 3, rows = Math.ceil(LANES.length / cols);
+      const oc = this.opts.cols, cols = (typeof oc === "function" ? oc(w, h) : oc) || (w > 600 ? 4 : 3);
+      const rows = Math.ceil(LANES.length / cols), oy = this.opts.oy || 0.45;
       const cw = w / cols, rh = h / rows;
       this.R = Math.min(cw, rh) * 0.2;
       this.orbs.forEach((o, i) => {
         const row = Math.floor(i / cols); let col = i % cols;
         if (row % 2 === 1) col = cols - 1 - col; // serpentine: hand-offs flow like a snake
-        o.x = cw * (col + 0.5); o.y = rh * (row + 0.45);
+        o.x = cw * (col + 0.5); o.y = rh * (row + oy);
       });
     }
 

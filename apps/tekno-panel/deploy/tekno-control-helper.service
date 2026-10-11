@@ -1,0 +1,20 @@
+# systemd *user* unit for the TEKNO CONTROL privilege helper. Installed by deploy/install.sh.
+# No network port: a unix socket in $XDG_RUNTIME_DIR (mode 600, same user, peer uid checked).
+# It only runs the owner-approved sudo actions (run/stop a lane, restart an allowlisted service),
+# rebuilding each command from the allowlist in tekno_panel/control.py. The web panel itself keeps
+# NoNewPrivileges, so a bug in the web app can't reach sudo directly.
+[Unit]
+Description=TEKNO CONTROL privilege helper (allowlisted lane/service actions)
+Before=tekno-panel.service
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=%h/.config/tekno-panel/env
+ExecStart=@APP_DIR@/.venv/bin/python -m tekno_panel.helper
+Restart=always
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,10 +11,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import demo, review
+from . import demo, procs, review
+from .control import ActionError
 from .auth import COOKIE, SESSION_TTL, Auth
 from .config import Settings, load_settings
 from .files import AUDIO_EXT
+
+# handoff deliverables besides audio (DAW projects, MIDI, reports): served as downloads only
+HANDOFF_DOC_EXT = frozenset({".rpp", ".mid", ".md", ".txt", ".json", ".lua", ".zip"})
 from .state import Collector
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -21,11 +26,29 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
        "media-src 'self' blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
 
-def create_app(settings: Settings | None = None, start_collector: bool = True, runner=None) -> FastAPI:
+def _finite(o):
+    """Replace NaN / Infinity (not valid JSON) anywhere in a snapshot with null."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o
+
+
+def dumps(snap: dict) -> str:
+    try:
+        return json.dumps(snap, default=str, allow_nan=False)
+    except ValueError:
+        return json.dumps(_finite(snap), default=str, allow_nan=False)
+
+
+def create_app(settings: Settings | None = None, start_collector: bool = True, runner=None, action_runner=None) -> FastAPI:
     s = settings or load_settings()
     s.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     auth = Auth(s.state_dir)
-    collector = Collector(s)
+    collector = Collector(s, runner=action_runner)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -97,7 +120,8 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
     @app.get("/api/state")
     async def state(request: Request, demo: str | None = None):
         need_auth(request)
-        return await asyncio.to_thread(snapshot, want_demo(demo))
+        snap = await asyncio.to_thread(snapshot, want_demo(demo))
+        return Response(dumps(snap), media_type="application/json")
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket):
@@ -112,7 +136,7 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
                 snap = await asyncio.to_thread(snapshot, use_demo)
                 if snap.get("ts") != last:
                     last = snap.get("ts")
-                    await websocket.send_text(json.dumps(snap, default=str))
+                    await websocket.send_text(dumps(snap))
                 await asyncio.sleep(1.0 if use_demo else s.push_interval)
         except (WebSocketDisconnect, RuntimeError):
             return
@@ -137,11 +161,55 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
             raise HTTPException(e.status, str(e))
         return {"ok": True, "comment": text}
 
+    # ---------- controls (allowlisted, audited; danger tier needs the passcode again) ----------
+    @app.post("/api/action")
+    async def action(request: Request):
+        need_auth(request)
+        if request.headers.get("x-tekno") != "1":
+            raise HTTPException(403, "missing x-tekno header")
+        if not s.controls:
+            raise HTTPException(403, "controls are switched off (TEKNO_CONTROLS=0)")
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            body = {}
+        name, params = str(body.get("action", "")), body.get("params") or {}
+        ip = request.client.host if request.client else "?"
+        if body.get("demo") or s.demo:
+            return {"ok": True, "demo": True, "summary": f"Demo: {name} not run"}
+        if auth.locked(ip):
+            raise HTTPException(429, "Too many wrong passcodes. Wait 5 minutes.")
+        running = await asyncio.to_thread(procs.scan, s.proc_root)
+        try:
+            res = await asyncio.to_thread(collector.controller.run, name, params, running, ip,
+                                          lambda code: auth.check(ip, code))
+        except ActionError as e:
+            raise HTTPException(e.status, str(e))
+        collector._slow_at = 0  # rescan now so the result shows on the next push
+        return res
+
+    @app.get("/api/audit")
+    async def audit_log(request: Request):
+        need_auth(request)
+        return {"audit": collector.controller.audit_tail(200)}
+
+    # ---------- history ----------
+    @app.get("/api/activity")
+    async def activity(request: Request, limit: int = 100, before: float | None = None, kind: str | None = None,
+                       card: str | None = None, q: str | None = None):
+        need_auth(request)
+        return {"events": await asyncio.to_thread(collector.history.events, limit, before, kind, card, q)}
+
+    @app.get("/api/metrics")
+    async def metrics(request: Request, range: str = "1h"):
+        need_auth(request)
+        return Response(dumps(await asyncio.to_thread(collector.history.series, range)), media_type="application/json")
+
     # ---------- media ----------
-    def safe_file(root: Path, rel: str) -> Path:
+    def safe_file(root: Path, rel: str, exts=AUDIO_EXT) -> Path:
         root = root.resolve()
         p = (root / rel).resolve()
-        if not p.is_relative_to(root) or p.suffix.lower() not in AUDIO_EXT or not p.is_file():
+        if not p.is_relative_to(root) or p.suffix.lower() not in exts or not p.is_file():
             raise HTTPException(404, "not found")
         return p
 
@@ -151,6 +219,17 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         if "/" in card or card.startswith("."):
             raise HTTPException(404, "not found")
         p = safe_file(s.cards_path, f"{card}/{path}")
+        return FileResponse(p, headers={"Cache-Control": "private, max-age=60"})
+
+    @app.get("/handoff/{project}/{path:path}")
+    async def handoff_media(project: str, path: str, request: Request):
+        need_auth(request)
+        if "/" in project or project.startswith("."):
+            raise HTTPException(404, "not found")
+        p = safe_file(s.handoff_path, f"{project}/{path}", AUDIO_EXT | HANDOFF_DOC_EXT)
+        if p.suffix.lower() in HANDOFF_DOC_EXT:  # project files and reports: download, never render
+            return FileResponse(p, filename=p.name, media_type="application/octet-stream",
+                                headers={"Cache-Control": "private, max-age=60", "X-Content-Type-Options": "nosniff"})
         return FileResponse(p, headers={"Cache-Control": "private, max-age=60"})
 
     @app.get("/media-ref")
@@ -173,6 +252,10 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
     @app.get("/")
     async def index():
         return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/desktop")
+    async def desktop():
+        return FileResponse(STATIC / "desktop.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/sw.js")
     async def sw():

@@ -68,7 +68,9 @@ def test_state_live(client):
     slugs = {t["slug"]: t for t in s["tracks"]}
     assert slugs["dry-001"]["state"] == "failed"
     assert slugs["e2e-001"]["files_lane"] == "Score"
-    assert any(a["url"] == "/media/e2e-001/polish/master.wav" for a in s["audio"])
+    assert any(a["url"].startswith("/media/e2e-001/polish/master.wav?v=") for a in s["audio"])
+    m = next(a for a in s["audio"] if a["path"] == "polish/master.wav")
+    assert client.get(m["url"]).content.startswith(b"RIFF")  # the version query is ignored by the route
     assert s["reference"]["url"] == "/media-ref"
     assert s["scores"][0]["verdict"] == "NO-GO"
     assert s["health"]["disk"]["ok"]
@@ -110,6 +112,14 @@ def test_media_streaming_and_range(client):
 def test_media_traversal_blocked(client, path):
     login(client)
     assert client.get(path).status_code == 404
+
+
+def test_desktop_page_is_public_shell(client):
+    r = client.get("/desktop")
+    assert r.status_code == 200 and "desktop.js" in r.text
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    assert client.get("/static/js/desktop.js").status_code == 200
+    assert client.get("/static/desktop.css").status_code == 200
 
 
 def test_security_headers(client):
@@ -174,3 +184,29 @@ def test_build_comment():
     assert review.build_comment("approve", "a\n\nb") == "APPROVED via TEKNO CONTROL: a b"
     with pytest.raises(review.ReviewError):
         review.build_comment("reject", "")
+
+
+def test_handoff_media_is_confined(client, settings):
+    h = settings.handoff_path / "e2e-001_tekno_165_Fmin"
+    (h / "stems").mkdir(parents=True)
+    (h / "master.wav").write_bytes(b"RIFF" + b"\0" * 16)
+    (h / "score.json").write_text("{}")
+    (h / "track.rpp").write_text("<REAPER_PROJECT\n>\n")
+    (h / "render.py").write_text("print(1)")
+    assert client.get("/handoff/e2e-001_tekno_165_Fmin/master.wav").status_code == 401
+    assert client.get("/handoff/e2e-001_tekno_165_Fmin/track.rpp").status_code == 401
+    login(client)
+    assert client.get("/handoff/e2e-001_tekno_165_Fmin/master.wav").content.startswith(b"RIFF")
+    for doc in ("track.rpp", "score.json"):  # project files and reports download, never render
+        r = client.get(f"/handoff/e2e-001_tekno_165_Fmin/{doc}")
+        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+        assert r.headers["content-type"].startswith("application/octet-stream")
+    for bad in ("/handoff/e2e-001_tekno_165_Fmin/render.py", "/handoff/e2e-001_tekno_165_Fmin/../../tools/x.mp3",
+                "/handoff/..%2F..%2Fetc/passwd", "/handoff/.hidden/master.wav"):
+        assert client.get(bad).status_code == 404, bad
+
+
+def test_state_has_live_fields(client):
+    s = login(client).get("/api/state").json()
+    assert {"history", "handoff", "processes", "freshness"} <= set(s)
+    assert s["chat"]["threads"] and s["chat"]["threads"][0]["id"].startswith("card-")

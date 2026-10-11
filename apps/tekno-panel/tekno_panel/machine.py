@@ -3,19 +3,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import time
 import urllib.request
 from pathlib import Path
 
-from .files import tail
-
-PROGRESS_RE = re.compile(r"(\d{1,3})%\|")
-STEPS_RE = re.compile(r"\b(\d{1,4})/(\d{1,4})\s*\[")
-# "2026-10-11 09:34:20.367 | INFO     | acestep.core.x:func:67 - msg" -> "msg"
-LOG_PREFIX_RE = re.compile(r"^\S+ \S+ \| \w+\s+\| (?:[\w.]+:[\w<>]+:\d+ - )?")
+from . import acelog, procs
 
 
 def _run(cmd: list[str], timeout: float = 3.0) -> tuple[int, str]:
@@ -51,7 +45,28 @@ def gpu() -> dict:
             return None
 
     return {"ok": True, "name": f[0], "util": num(f[1]), "mem_used": num(f[2]), "mem_total": num(f[3]),
-            "temp": num(f[4]), "power": num(f[5]) if len(f) > 5 else None}
+            "temp": num(f[4]), "power": num(f[5]) if len(f) > 5 else None, "apps": gpu_apps()}
+
+
+def gpu_apps(proc_root: Path = Path("/proc")) -> list[dict]:
+    """Processes holding GPU memory, labelled from their command line."""
+    code, out = _run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"])
+    apps = []
+    for line in out.strip().splitlines() if code == 0 else []:
+        parts = [x.strip() for x in line.split(",")]
+        if len(parts) < 2 or not parts[0].isdigit():
+            continue
+        try:
+            argv = (proc_root / parts[0] / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+        except OSError:
+            argv = ""
+        label = "ACE-Step" if "acestep" in argv else (Path(argv.split()[0]).name if argv.strip() else f"pid {parts[0]}")
+        try:
+            mem = float(parts[1])
+        except ValueError:
+            mem = None
+        apps.append({"pid": int(parts[0]), "name": label, "mem": mem})
+    return apps
 
 
 def disk(path: Path, warn_gb: float) -> dict:
@@ -78,8 +93,9 @@ def _process_running(pattern: str) -> bool:
     return code == 0
 
 
-def service(spec: dict) -> dict:
-    """Try unit -> http -> process checks; first conclusive answer wins."""
+def service(spec: dict, journal_rows: list[dict] | None = None, lora: dict | None = None,
+            cgroup_root: Path = Path("/sys/fs/cgroup")) -> dict:
+    """Try unit -> cgroup -> journal -> http -> LoRA -> process checks; first conclusive answer wins."""
     name = spec["name"]
     detail = []
     if spec.get("unit"):
@@ -88,6 +104,21 @@ def service(spec: dict) -> dict:
             return {"name": name, "status": "up" if st == "active" else ("failed" if st == "failed" else "starting"),
                     "via": f"systemd:{spec['unit']}"}
         detail.append("unit not visible")
+    if spec.get("cgroup"):
+        # another account's user unit: its cgroup still shows whether it has processes
+        if acelog.cgroup_active(cgroup_root, spec["cgroup"]):
+            return {"name": name, "status": "up", "via": f"cgroup:{spec['cgroup']}"}
+    if spec.get("journal") and journal_rows is not None:
+        st = acelog.unit_state(journal_rows, spec["journal"])
+        if st:
+            verb = st["verb"]
+            if spec.get("lora_log") and lora and verb == "Finished":
+                return {"name": name, "status": "up" if lora["ok"] else "failed",
+                        "via": f"journal: {verb.lower()} · {lora['text'][:80]}"}
+            status = {"Finished": "up", "Started": "up", "Starting": "starting", "Reloaded": "up",
+                      "Stopping": "down", "Stopped": "down", "Failed": "failed", "Failed to start": "failed"}[verb]
+            return {"name": name, "status": status, "via": f"journal: {verb.lower()}"}
+        detail.append("no journal lines")
     if spec.get("http"):
         if http_json(spec["http"]) is not None:
             return {"name": name, "status": "up", "via": "http"}
@@ -107,39 +138,18 @@ def service(spec: dict) -> dict:
     return {"name": name, "status": "down", "via": ", ".join(detail) or "unknown"}
 
 
-def ace(ace_url: str, lock: Path, log: Path) -> dict:
+def ace(ace_url: str, lock: Path, log: Path, gen_procs: list[dict] | None = None,
+        proc_root: Path = Path("/proc"), now: float | None = None) -> dict:
+    """ACE status: API health, the take in flight (log + GPU lock + lane process) and recent events."""
+    now = now or time.time()
     h = http_json(ace_url.rstrip("/") + "/health")
     ok = bool(h and (h.get("data") or {}).get("status") == "ok")
-    job = None
-    try:
-        raw = lock.read_text().strip() if lock.exists() else ""
-    except OSError:
-        raw = ""
-    if raw:
-        pid_s, _, card = raw.partition(" ")
-        alive = pid_s.isdigit() and Path(f"/proc/{pid_s}").exists()
-        if alive:
-            job = {"pid": int(pid_s), "card": Path(card).name or card, "since": lock.stat().st_mtime}
-    lines = tail(log, 40, 32768)
-    progress = None
-    for ln in reversed(lines):
-        if "Done! Generated" in ln or "Saved audio" in ln:
-            progress = 100 if job else None
-            break
-        m = STEPS_RE.search(ln)
-        if m and int(m.group(2)) > 1:
-            progress = round(100 * int(m.group(1)) / int(m.group(2)))
-            break
-        m = PROGRESS_RE.search(ln)
-        if m:
-            progress = int(m.group(1))
-            break
-    if job and progress is None:
-        # ~160 s per 180 s take on the L4: estimate from elapsed time
-        progress = min(95, round(100 * (time.time() - job["since"]) / 170))
-    return {"ok": ok, "status": "generating" if job else ("idle" if ok else "down"), "job": job,
-            "progress": progress if job else None,
-            "log": [LOG_PREFIX_RE.sub("", ln)[:200] for ln in lines[-6:]]}
+    lines, mtime = acelog.read_tail(log)
+    parsed = acelog.parse(lines)
+    st = acelog.ace_state(ok, parsed, mtime, procs.gpu_lock(lock, proc_root), gen_procs or [], now)
+    st["log"] = [e["text"] for e in parsed["events"][-6:]]
+    st["events"] = parsed["events"][-8:]
+    return st
 
 
 def load() -> dict:

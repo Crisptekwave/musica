@@ -13,13 +13,20 @@ import time
 import wave
 from functools import lru_cache
 
-from .config import LANES
+from .config import LANES, SCRIPT_LANES
+from .control import ACTIONS, RUN_STEPS, services_map
+from .mail import threads as mail_threads
 
 SLUGS = ["acid-rave-017", "squat-303-018", "bunker-f-019", "teknival-020", "sound-sys-021",
          "free-party-022", "raw-kick-023"]
 AGENTS = ["Grok Bot", "Mix Judge", "Claude", "Hermes"]
 PIPE = LANES[:-1]  # Plan..Review
 STEP_S = 9  # seconds per lane in the demo
+PLAN = {"source": "plan", "bpm": 165.0, "key": "F minor", "total_bars": 128, "total_s": 186.18, "rule": "",
+        "sections": [{"name": n, "bars": b, "energy": e, "start_bar": None} for n, b, e in
+                     [("intro", 16, 4), ("build", 16, 6), ("drop1", 32, 9), ("break", 16, 3), ("drop2", 32, 10),
+                      ("outro", 16, 5)]]}
+LANE_SCRIPT = {ln: f"{name}.py" for name, lns in SCRIPT_LANES.items() for ln in lns}
 
 
 def _rng(*key) -> random.Random:
@@ -59,8 +66,17 @@ def _track(i: int, slug: str, now: float) -> dict:
         "current_task": {"id": tid, "title": f"[{slug}] {lane.upper()}", "status": "review" if lane == "Review" else "running",
                          "assignee": f"tekno-{lane.lower().replace(' ', '-')}", "last_error": None},
         "review_task_id": tid if lane == "Review" else None,
-        "tasks": [], "created_at": int(now - t), "last_activity": int(now - (t % STEP_S)),
+        "tasks": [{"id": f"t_{abs(hash((slug, cycle, ln))) % 16**8:08x}", "lane": ln,
+                   "status": "done" if k < pos else ("review" if ln == "Review" else ("blocked" if state == "failed" else "running")),
+                   "title": f"[{slug}] {ln.upper()}"} for k, ln in enumerate(PIPE[:pos + 1])],
+        "created_at": int(now - t), "last_activity": int(now - (t % STEP_S)),
         "age_s": int(t), "files_lane": lane if lane != "Done" else "Review", "lane_frac": round(frac, 3),
+        "plan": PLAN, "reports": {}, "attempts": loops, "handoff": [], "board_behind": False,
+        "runs": [{"name": f"run{k + 1}.log", "from": "plan" if k == 0 else "mix", "step": "master", "lane": "Master",
+                  "started": now - t - (loops - k) * 600, "ended": now - t - (loops - k) * 600 + 240, "finished": True,
+                  "exit": 1, "verdict": "NO-GO", "draft": round(5.5 + k * 0.4, 1), "fails": []} for k in range(loops)],
+        "live": {"script": LANE_SCRIPT.get(lane, "lane script"), "pid": 40000 + i, "since": now - (t % STEP_S),
+                 "lane": lane, "via": "process"} if state == "working" else None,
     }
 
 
@@ -128,6 +144,9 @@ def scores(now: float) -> list[dict]:
         lufs, tp = r.uniform(-10.2, -8.6), r.uniform(-1.6, -0.6)
         sub, corr = r.uniform(-58, -24), r.uniform(-0.1, 0.99)
         judge, ear = r.uniform(5.2, 8.6), r.uniform(5.0, 9.0)
+        knock, dist = r.uniform(-9, 5), r.uniform(1.2, 5.5)
+        bands = {b: round(r.uniform(-6, 2), 1) for b in
+                 ("sub 30-80", "low 80-250", "lowmid 250-800", "mid 800-2k", "high 2-6k", "air 6-20k")}
         bpm = r.choice([165.0, 165.02, 168.0, 170.0, 172.01, 175.0])
         mono_ok = r.random() > 0.2
 
@@ -139,19 +158,27 @@ def scores(now: float) -> list[dict]:
             b(abs(lufs + 9) <= 0.5, round(lufs, 1), "LUFS-I", "-9 ±0.5"),
             b(tp <= -1.0, round(tp, 1), "True peak", "<= -1.0 dBTP"),
             b(sub <= -30, round(sub, 1), "Sub mono S/M", "<= -30 dB"),
-            b(corr >= 0, round(corr, 2), "Stereo corr", ">= 0 (250-12k)"),
+            b(corr >= 0.3, round(corr, 2), "Stereo corr", ">= 0.3 per band"),
+            {**b(knock >= 3, round(knock, 1), "Kick knock", ">= +3 dB"),
+             "status": "pass" if knock >= 3 else "warn"},
+            {"label": "vs SIFRES", "value": f"{dist:.1f} dB", "target": "band distance (lower = closer)",
+             "status": "info", "detail": f"HF tilt {bands['air 6-20k']:+.1f} dB"},
             b(mono_ok, "max 16 bars" if mono_ok else "48 bars flat", "Monotony", "change <= 32 bars"),
             b(judge >= 6.5, f"{judge:.1f} {'GO' if judge >= 6.5 else 'NO-GO'}", "Mix Judge", ">= 6.5"),
             b(ear >= 6.5, round(ear, 1), "EarLoop", ">= 6.5"),
         ]
-        ok = all(x["status"] == "pass" for x in badges)
+        ok = all(x["status"] in ("pass", "warn", "info") for x in badges)
         out.append({
             "card": SLUGS[k % len(SLUGS)].rsplit("-", 1)[0] + f"-{k + 4:03d}", "mtime": now - (14 - k) * 3600 * 2,
             "verdict": "GO" if ok else "NO-GO", "pass": ok,
             "hard_fails": [f"{x['label']} {x['value']}" for x in badges if x["status"] == "fail"],
             "badges": badges,
             "metrics": {"lufs": round(lufs, 2), "tp": round(tp, 2), "sub": round(sub, 1), "corr": round(corr, 2),
-                        "draft": round(judge, 1), "earloop": round(ear, 1)},
+                        "draft": round(judge, 1), "earloop": round(ear, 1), "knock": round(knock, 1),
+                        "ref_dist": round(dist, 2), "tilt": bands["air 6-20k"]},
+            "ref": {"bands": bands, "dist": round(dist, 2), "tilt": bands["air 6-20k"], "crest": 8.1, "crest_ref": 9.3,
+                    "corr14": 0.79, "corr14_ref": 0.374},
+            "run": "current", "sha": f"demo{k:04d}", "go": ok,
             "ear": ["acid identity/evolution", "kick punch vs tick-thump", "pumping"],
             "duration_s": 185.0,
         })
@@ -215,16 +242,31 @@ def chat(now: float) -> dict:
         msgs.append({"id": k, "thread": f"card-{s}", "from": who, "to": [], "subject": f"card-{s}",
                      "body": txt.format(s=s), "ts": now - (tick - k) * 6, "importance": "normal"})
     return {"status": "ok", "error": None, "agents": [{"name": a, "program": a.lower().replace(" ", "-")} for a in AGENTS],
-            "messages": msgs}
+            "messages": msgs, "threads": mail_threads(msgs, SLUGS), "source": "demo",
+            "identity": {"name": "Tekno-Panel", "project": "demo", "read_only": True}}
 
 
 def snapshot(now: float | None = None) -> dict:
     now = now or time.time()
     trs = tracks(now)
+    sc = scores(now)
+    ch = chat(now)
     return {
         "mode": "demo", "ts": now, "tracks": trs, "lanes": lanes(trs, now), "audio": audio(now),
         "reference": {"name": "SIFRES v02 (demo)", "url": "/demo-audio/reference.wav"},
-        "scores": scores(now), "health": health(now, trs), "chat": chat(now),
+        "scores": sc, "health": health(now, trs), "chat": ch,
+        "history": [{"card": x["card"], "run": x["run"], "runs": [x["run"]], "sha": x["sha"], "mtime": x["mtime"],
+                     "verdict": x["verdict"], "go": x["go"], "metrics": x["metrics"]} for x in sc],
+        "handoff": [],
+        "processes": [{"pid": t["live"]["pid"], "script": t["live"]["script"], "lanes": [t["lane"]], "card": t["slug"],
+                       "since": t["live"]["since"], "task": None} for t in trs if t.get("live")],
+        "freshness": {"kanban": now - 20, "files": now - 4, "ace_log": now - 1, "mail": ch["messages"][-1]["ts"]},
+        "controls": {"enabled": True, "actions": ACTIONS, "services": sorted(services_map("demo", 1000)), "steps": list(RUN_STEPS)},
+        "machine": {"paused": False}, "audit": [],
+        "alerts": [{"key": f"failed:{t['slug']}", "level": "warn", "card": t["slug"], "title": f"{t['slug']} stuck in {t['lane']}",
+                    "detail": "demo", "since": now - 120} for t in trs if t["state"] == "failed"],
+        "activity": [{"id": f"demo:{m['id']}", "ts": m["ts"], "kind": "mail", "card": m["thread"][5:], "level": "info",
+                      "text": f"{m['from']}: {m['body']}"} for m in reversed(ch["messages"][-15:])],
         "sources": {"kanban": {"ok": True, "error": None}, "files": {"ok": True}, "mail": {"ok": True}},
     }
 
