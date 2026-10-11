@@ -80,6 +80,7 @@
   function show(screen) {
     S.screen = screen; store.set("tekno-screen", screen);
     if (screen === "health") V3.studio.start($("#studio-m"), { single: true }); else V3.studio.stop();  // frames only while looked at
+    if (screen === "palette") V3.palette.mount($("#palette-m")); else V3.palette.stop();
     document.querySelectorAll(".screen").forEach(el => el.classList.toggle("active", el.id === "s-" + screen));
     document.querySelectorAll("#tabbar button").forEach(b => b.classList.toggle("active", b.dataset.screen === screen));
     if (screen === "bots") bots.start(); else bots.stop();

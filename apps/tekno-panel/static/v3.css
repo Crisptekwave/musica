@@ -79,3 +79,12 @@
 .v3-cn { display: grid; min-width: 0; font-size: 12px; } .v3-cn b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .v3-cm { font-size: 12px; color: var(--muted); } .v3-cs { display: flex; flex-wrap: wrap; gap: 4px; }
 .v3-readme { margin-top: 12px; } .v3-readme pre { white-space: pre-wrap; font: 12px/1.5 var(--mono); color: var(--text); max-height: 460px; overflow: auto; }
+/* phone: palette as a single column with big play buttons */
+@media (max-width: 700px) {
+  .v3-filters { display: grid; grid-template-columns: 1fr 1fr; } .v3-filters .search { grid-column: 1 / -1; }
+  .v3-clip { grid-template-columns: 52px minmax(0, 1fr); } .v3-cm, .v3-cs { grid-column: 2; }
+  .v3-clip .icon-btn { width: 48px; height: 48px; font-size: 18px; }
+}
+#studio-m .empty-state, #palette-m .empty-state { text-align: center; padding: 24px 12px; color: var(--muted); }
+#studio-m .empty-state b, #palette-m .empty-state b { display: block; color: var(--acid); margin-bottom: 6px; }
+#palette-m .icon-btn { display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--acid); }

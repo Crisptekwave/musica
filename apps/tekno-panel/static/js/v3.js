@@ -119,7 +119,7 @@
         const sel = this.single && ins.length > 1 ? `<div class="v3-pick">${ins.map(i => `<button class="chip${i.n === this.pick ? " sel" : ""}" data-n="${i.n}">${esc(i.display)} ${esc(i.slug || "")}</button>`).join("")}</div>` : "";
         el.innerHTML = ins.length
           ? sel + `<div class="v3-grid${this.single ? " single" : ""}">${ins.filter(i => !this.single || i.n === this.pick).map(i => this.figure(i)).join("")}</div>`
-          : `<div class="glass empty-state"><b>No REAPER instance running</b><div class="muted">Each producer opens its own on an Xvfb display (:100 to :199). They show up here by themselves.</div></div>`;
+          : `<div class="glass empty-state"><b>No REAPER producer running right now</b><div class="muted">A live view appears here as soon as a build starts.${d.snapper_age != null && d.snapper_age <= 20 ? " Frame grabber alive." : ""}</div></div>`;
       }
       for (const i of ins) {
         const f = el.querySelector(`.v3-inst[data-n="${i.n}"]`);

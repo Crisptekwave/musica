@@ -94,6 +94,8 @@
         <div class="glass chart-box"><h3>Mix Judge / EarLoop <small>≥ 6.5 · auto-draft until judged</small></h3><canvas id="ch-judge" height="130"></canvas></div>
       </section>
 
+      <section class="screen" id="s-palette" data-title="Palette"><div id="palette-m"></div></section>
+
       <section class="screen" id="s-health" data-title="Machine">
         <div class="gauges">
           <div class="glass gauge-box"><canvas id="g-util" width="160" height="160"></canvas><span>GPU util</span></div>
@@ -127,6 +129,7 @@
       <button data-screen="bots"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9" fill="none" stroke-width="1.6"/></svg><span>Bots</span></button>
       <button data-screen="listen"><svg viewBox="0 0 24 24"><path d="M4 14h2v6H4zM8 9h2v11H8zM12 4h2v16h-2zM16 10h2v10h-2zM20 13h2v7h-2z"/></svg><span>Listen</span></button>
       <button data-screen="scores"><svg viewBox="0 0 24 24"><path d="M4 19l5-6 4 3 7-9 1 1-8 11-4-3-4 5z"/></svg><span>Scores</span></button>
+      <button data-screen="palette"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 0 0 3-3c0-5-4-11-8-11z"/></svg><span>Palette</span></button>
       <button data-screen="health"><svg viewBox="0 0 24 24"><path d="M2 12h4l2-5 4 10 2-5h8v2h-7l-3 7-4-10-1 3H2z"/></svg><span>Machine</span></button>
       <button data-screen="chat"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H8l-5 4z"/></svg><span>Chat</span><i class="dot hidden" id="chat-dot"></i></button>
     </nav>
