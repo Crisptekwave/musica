@@ -145,3 +145,46 @@ def test_digest_dry_run_posts_nothing(tmp_path, monkeypatch, capsys):
     before = agent_status.read("qwen-night")
     qn.digest(True)
     assert "Facts:" in capsys.readouterr().out and agent_status.read("qwen-night") == before
+
+
+class FakeClap:
+    """Hears a kick in anything under Kicks/ and a metallic hat in the rest."""
+
+    def listen(self, clips):
+        import numpy as np
+        out, emb = [], []
+        for p in clips:
+            kick = "Kicks" in str(p)
+            out.append({"clap_role": "kick" if kick else "hat", "clap_role_p": 0.9 if kick else 0.4,
+                        "clap_tags": ["gabber"] if kick else ["metallic"]})
+            emb.append([1.0, 0.0] if kick else [0.0, 1.0])
+        return out, np.array(emb, dtype="float32")
+
+
+def test_clap_role_and_tags_are_evidence():
+    m = {**HAT_M, "clap_role": "perc", "clap_role_p": 0.8, "clap_tags": ["metallic", "industrial"]}
+    v, dropped = qn.check("misc/one.wav", m, {"role": "hat", "tags": ["industrial", "gabber", "bright"]})
+    assert v["role"] == "perc" and "role hat->perc (clap)" in dropped
+    assert v["tags"] == ["industrial", "bright"] and "tag gabber" in dropped
+    v, _ = qn.check("Kicks/x.wav", {**KICK_M, "clap_role": "bass", "clap_role_p": 0.99}, {"role": "kick"})
+    assert v["role"] == "kick"  # the path still wins
+
+
+def test_tag_with_clap_builds_the_search_index(tmp_path, monkeypatch, capsys):
+    lib, night = tmp_path / "lib", tmp_path / "night"
+    write_wavs(lib)
+    for k, v in (("LIB", lib), ("NIGHT", night), ("clip48", lambda p: p), ("clap_or_none", lambda log=None: FakeClap())):
+        monkeypatch.setattr(qn, k, v)
+    monkeypatch.setattr(agent_status, "DIR", tmp_path / "agents")
+    monkeypatch.setattr(qn, "chat", lambda *a, **k: json.dumps({"items": [{"id": 0, "role": "bass", "tags": ["gabber"]},
+                                                                        {"id": 1, "role": "kick", "tags": ["metallic"]}]}))
+    qn.tag(100, False)
+    db = json.loads((night / "tags.json").read_text())
+    assert db["Kicks/hard.wav"]["tags"] == ["gabber"] and db["Kicks/hard.wav"]["clap_role"] == "kick"
+    assert db["odd.wav"]["role"] == "other" and db["odd.wav"]["tags"] == ["metallic"]  # unsure CLAP, kick fails the check
+    assert json.loads((night / "clap" / "paths.json").read_text()) == ["Kicks/hard.wav", "odd.wav"]
+    qn.save_emb(["odd.wav"], __import__("numpy").array([[0.0, 1.0]], "float32"))  # re-embedding never duplicates
+    assert json.loads((night / "clap" / "paths.json").read_text()) == ["Kicks/hard.wav", "odd.wav"]
+    assert qn.find(None, "Kicks/hard.wav", 5) == 0
+    out = capsys.readouterr().out
+    assert "odd.wav" in out and "[other: metallic]" in out
