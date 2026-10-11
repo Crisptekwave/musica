@@ -124,66 +124,18 @@ def fallback(fb: Path, vllm_ok: bool | None, now: float | None = None, runs: int
 
 
 # ---------------------------------------------------------------- style presets (tools/house_profile.json)
-def _bpm_range(v) -> list | None:
-    def n(x):
-        return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
-    if isinstance(v, dict):
-        for lo, hi in (("bpm_min", "bpm_max"), ("min_bpm", "max_bpm"), ("bpm_lo", "bpm_hi"), ("min", "max"), ("lo", "hi")):
-            if n(v.get(lo)) is not None and n(v.get(hi)) is not None:
-                return [n(v[lo]), n(v[hi])]
-        for k in ("bpm", "bpm_range", "tempo", "range"):
-            r = _bpm_range(v.get(k)) if k in v else None
-            if r:
-                return r
-        return None
-    if isinstance(v, (list, tuple)) and len(v) == 2 and all(n(x) is not None for x in v):
-        return [n(v[0]), n(v[1])]
-    if n(v) is not None:
-        return [n(v), n(v)]
-    return None
-
-
-def _calibration(v) -> str | None:
-    if not isinstance(v, dict):
-        return None
-    for k in ("status", "calibration", "state"):
-        x = v.get(k)
-        if isinstance(x, str) and x:
-            return x.lower()[:24]
-        if isinstance(x, dict):
-            sub = _calibration(x)
-            if sub:
-                return sub
-    if v.get("provisional") is True:
-        return "provisional"
-    if v.get("calibrated") is True:
-        return "calibrated"
-    if v.get("calibrated") is False:
-        return "provisional"
-    return None
-
-
 def styles(profile: Path) -> list[dict]:
-    """Style presets, once another agent adds them under "presets" / "styles" / "style_presets". Nothing otherwise."""
+    """Style presets: house_profile.json "presets" = {name: {"bpm": [lo, hi], "status": "calibrated"|"provisional"}}."""
     d = _json(profile)
-    if not isinstance(d, dict):
-        return []
-    rows = None
-    for key in ("presets", "style_presets", "styles"):
-        if isinstance(d.get(key), (dict, list)) and d[key]:
-            rows = d[key]
-            break
-    if rows is None:
-        return []
-    items = list(rows.items()) if isinstance(rows, dict) else [(None, r) for r in rows]
+    rows = d.get("presets") if isinstance(d, dict) else None
     out = []
-    for key, v in items:
+    for name, v in (rows.items() if isinstance(rows, dict) else []):
         if not isinstance(v, dict):
             continue
-        name = v.get("name") or v.get("style") or key
-        if not isinstance(name, str) or not name:
-            continue
-        out.append({"name": name[:40], "bpm": _bpm_range(v), "calibration": _calibration(v)})
+        bpm = v.get("bpm")
+        ok = isinstance(bpm, list) and len(bpm) == 2 and all(isinstance(x, (int, float)) for x in bpm)
+        out.append({"name": str(name)[:40], "bpm": [float(x) for x in bpm] if ok else None,
+                    "calibration": str(v.get("status") or "provisional")[:24].lower()})
     return out[:12]
 
 

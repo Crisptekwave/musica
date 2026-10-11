@@ -96,13 +96,11 @@ def test_styles_defensive(tmp_path):
     p.write_text(json.dumps({"name": "x"}))
     assert local.styles(p) == []
     p.write_text(json.dumps({"presets": {"tekno": {"bpm": [160, 175], "status": "Provisional"},
-                                         "gabber": {"bpm_min": 180, "bpm_max": 200, "calibrated": True},
-                                         "odd": 5}}))
+                                         "gabber": {"bpm": [180, 200], "status": "calibrated"},
+                                         "mental": {"bpm": "fast"}, "odd": 5}}))
     s = {x["name"]: x for x in local.styles(p)}
     assert s["tekno"] == {"name": "tekno", "bpm": [160.0, 175.0], "calibration": "provisional"}
-    assert s["gabber"]["bpm"] == [180.0, 200.0] and s["gabber"]["calibration"] == "calibrated" and "odd" not in s
-    p.write_text(json.dumps({"styles": [{"name": "mental", "bpm": {"min": 150, "max": 165}, "calibration": {"status": "provisional"}}]}))
-    assert local.styles(p) == [{"name": "mental", "bpm": [150.0, 165.0], "calibration": "provisional"}]
+    assert s["gabber"]["calibration"] == "calibrated" and s["mental"]["bpm"] is None and "odd" not in s
 
 
 def test_references_bom_and_titles(tmp_path):
@@ -172,7 +170,7 @@ def test_palette_routes(client, settings, tmp_path):
 # ---------------------------------------------------------------- REAPER project parser and studio
 def test_parse_rpp_fixture():
     r = studio.parse_rpp(FIX / "sample.rpp")
-    assert r["tempo"] == 167 and r["sample_rate"] == 48000 and r["render_file"].endswith("mix//premaster.wav")
+    assert r["tempo"] == 167
     assert [(t["name"], t["items"]) for t in r["tracks"]] == [("KICK", 2), ("Acid 303 lead", 1), ("Track 3", 0)]
     assert r["length_s"] == 15.75
     assert studio.parse_rpp(FIX / "missing.rpp") is None
@@ -293,21 +291,18 @@ def test_snap_tick_idles_unless_watched(snap_env, monkeypatch):
         (data / f"{n}.jpg").write_bytes(JPEG)
         return True
     monkeypatch.setattr(reaper_snap, "grab", fake_grab)
-    frames = {}
     now = time.time()
-    reaper_snap.tick(frames, now)
-    assert grabbed == [] and json.loads((data / "instances.json").read_text())["instances"][0]["frame_ts"] is None
+    reaper_snap.tick(now)
+    assert grabbed == [] and json.loads((data / "instances.json").read_text())["instances"][0]["slug"] == "sk-0930"
     (data / "viewing").touch()                                          # the Studio page is open
-    reaper_snap.tick(frames, now)
-    assert grabbed == [104]
-    ins = json.loads((data / "instances.json").read_text())["instances"][0]
-    assert ins["frame_ok"] is True and ins["frame_ts"] and ins["slug"] == "sk-0930"
+    reaper_snap.tick(now)
+    assert grabbed == [104] and (data / "104.jpg").exists()
     old = now - 60
     os.utime(data / "viewing", (old, old))                              # nobody watches any more
-    reaper_snap.tick(frames, now)
+    reaper_snap.tick(now)
     assert grabbed == [104]
     (proc / "20" / "environ").write_bytes(b"")                          # REAPER gone from :104
-    reaper_snap.tick(frames, now)
+    reaper_snap.tick(now)
     assert not (data / "104.jpg").exists() and json.loads((data / "instances.json").read_text())["instances"] == []
 
 

@@ -166,39 +166,31 @@ def write_instances(insts: list[dict], now: float) -> None:
     os.replace(tmp, DATA / "instances.json")
 
 
-def tick(frames: dict[str, dict], now: float | None = None) -> list[dict]:
-    """One pass: list the instances, grab their frames when watched, drop frames of instances that are gone."""
+def tick(now: float | None = None) -> list[dict]:
+    """One pass: list the instances, grab their frames when watched, delete frames of instances that are gone.
+    The panel reads frame age from the JPEG's mtime, so nothing about frames is kept here."""
     now = now or time.time()
     insts = scan()
-    live = watched(now)
-    for i in insts:
-        f = frames.setdefault(i["display"], {"frame_ts": None, "frame_ok": None})
-        if live:
-            f["frame_ok"] = grab(i["n"])
-            if f["frame_ok"]:
-                f["frame_ts"] = time.time()
-        i.update(frame_ts=f["frame_ts"], frame_ok=f["frame_ok"])
-    gone = set(frames) - {i["display"] for i in insts}
-    for disp in gone:
-        frames.pop(disp, None)
-        try:
-            (DATA / f"{disp[1:]}.jpg").unlink()
-        except OSError:
-            pass
+    if watched(now):
+        for i in insts:
+            grab(i["n"])
+    live = {f"{i['n']}.jpg" for i in insts}
+    for f in DATA.glob("*.jpg"):
+        if f.name not in live:
+            f.unlink(missing_ok=True)
     write_instances(insts, now)
     return insts
 
 
 def main(argv: list[str]) -> int:  # pragma: no cover - long-running service
     DATA.mkdir(parents=True, exist_ok=True)
-    frames: dict[str, dict] = {}
     if "--once" in argv:
-        print(json.dumps(tick(frames), indent=1))
+        print(json.dumps(tick(), indent=1))
         return 0
     while True:
         t0 = time.time()
         try:
-            tick(frames, t0)
+            tick(t0)
         except Exception as e:  # never let the loop die
             print(f"reaper-snap: {e}", file=sys.stderr, flush=True)
         time.sleep(max(0.2, (TICK_S if watched(time.time()) else IDLE_S) - (time.time() - t0)))

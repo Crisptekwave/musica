@@ -38,7 +38,7 @@ def _float(s: str):
 
 
 def parse_rpp(path: Path) -> dict | None:
-    """Tempo, tracks (name + item count), project length and render target of a REAPER project; None if unreadable.
+    """Tempo, tracks (name + item count) and project length of a REAPER project; None if unreadable.
 
     The file is a tree of ``<BLOCK ...`` / ``>`` lines with ``KEY value`` lines inside. Only the keys of the project,
     its tracks and the items directly under a track are read; everything else (FX chains, MIDI events, envelopes)
@@ -50,7 +50,7 @@ def parse_rpp(path: Path) -> dict | None:
         fh = open(path, encoding="utf-8", errors="replace")
     except OSError:
         return None
-    out = {"tempo": None, "sample_rate": None, "render_file": None, "tracks": [], "length_s": 0.0}
+    out = {"tempo": None, "tracks": [], "length_s": 0.0}
     stack: list[str] = []
     item_pos = item_len = None
     with fh:
@@ -74,14 +74,8 @@ def parse_rpp(path: Path) -> dict | None:
                     stack.pop()
                 continue
             key, _, rest = line.partition(" ")
-            if len(stack) == 1:
-                if key == "TEMPO":
-                    out["tempo"] = _float(rest.split()[0]) if rest.split() else None
-                elif key == "SAMPLERATE":
-                    v = _float(rest.split()[0]) if rest.split() else None
-                    out["sample_rate"] = int(v) if v else None
-                elif key == "RENDER_FILE":
-                    out["render_file"] = _unquote(rest) or None
+            if len(stack) == 1 and key == "TEMPO":
+                out["tempo"] = _float(rest.split()[0]) if rest.split() else None
             elif len(stack) == 2 and stack[1] == "TRACK" and key == "NAME" and out["tracks"]:
                 out["tracks"][-1]["name"] = _unquote(rest)
             elif len(stack) == 3 and stack[2] == "ITEM":
