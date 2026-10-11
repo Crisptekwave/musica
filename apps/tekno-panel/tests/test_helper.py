@@ -28,7 +28,7 @@ def test_helper_builds_its_own_argv(settings, monkeypatch):
     r = helper.handle(ctrl, {"action": "lane.run", "params": {"card": "e2e-001", "step": "mix", "argv": ["rm", "-rf", "/"]}},
                       scan=lambda root: [])
     assert r["code"] == 0 and seen["argv"][:4] == ["sudo", "-n", "-u", "Gebruiker"] and "rm" not in seen["argv"]
-    assert seen["argv"][6].startswith("umask 022;")
+    assert seen["argv"][4:6] == ["env", "XDG_RUNTIME_DIR=/run/user/1001"] and seen["argv"][9].startswith("umask 022;")
 
 
 def test_client_round_trip(tmp_path):

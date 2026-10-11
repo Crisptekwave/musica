@@ -239,7 +239,10 @@ class Controller:
             # positional args only: nothing from the request is interpolated into the shell text
             # umask 022 so the new card files stay readable like the ones from manual runs
             body = 'umask 022; cd "$1" && setsid nohup bash "$2" "$3" "$4" > "$5" 2>&1 < /dev/null & echo started'
-            argv = ["sudo", "-n", "-u", self.s.ace_user, "bash", "-c", body, "tekno-run",
+            # the lane user's session env: stems.py runs demucs under `systemd-run --user --scope`, which needs its bus
+            run_dir = f"/run/user/{self.s.ace_uid}"
+            argv = ["sudo", "-n", "-u", self.s.ace_user, "env", f"XDG_RUNTIME_DIR={run_dir}",
+                    f"DBUS_SESSION_BUS_ADDRESS=unix:path={run_dir}/bus", "bash", "-c", body, "tekno-run",
                     str(self.s.ace_workdir), script, slug, step, str(log)]
             return argv, f"Run {slug} from {step} → {log.name}", True
         if name == "lane.stop":

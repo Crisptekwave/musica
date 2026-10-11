@@ -67,8 +67,10 @@ def test_lane_run_argv_and_guards(cl, settings, act):
     r = do(cl, "lane.run", card="e2e-001", step="edit", passcode=cl.passcode)
     assert r.status_code == 200, r.text
     argv = act.calls[-1]
-    assert argv[:7] == ["sudo", "-n", "-u", "Gebruiker", "bash", "-c", argv[6]]
-    assert "$" in argv[6] and "e2e-001" not in argv[6]  # card/step only as positional args
+    uid = settings.ace_uid
+    assert argv[:9] == ["sudo", "-n", "-u", "Gebruiker", "env", f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                        f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus", "bash", "-c"]
+    assert "$" in argv[9] and "e2e-001" not in argv[9]  # card/step only as positional args
     assert argv[-3:-1] == ["e2e-001", "edit"] and argv[-1].endswith("/e2e-001/run2.log")
     assert do(cl, "lane.run", card="e2e-001", step="rm", passcode=cl.passcode).status_code == 400
     assert do(cl, "lane.run", card="../etc", step="edit", passcode=cl.passcode).status_code == 400
