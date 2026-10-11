@@ -13,7 +13,10 @@ This one-shot job (user timer, every 10 min) starts the local agent only when AL
 Allowlist only (Ryan, 2026-10-11): the model gets NO shell and NO file editing. It is bound to the one note it
 claimed and can only call the tools in TOOLS: read the note, run one of Claude's step scripts for that card,
 score the card, comment on the kanban card, post in agent-mail as "qwen", log, and finish (done | blocked).
-A run that ends any other way marks the note "stuck", so a note is never retried in a loop.
+The runner, not the model, enforces the plan: only the steps named in NEXT, in order; a failed step stops the run
+(one retry); real exit codes go into the note's LOG; "done" is downgraded to "blocked" unless every step succeeded;
+a note that asks for a judgement call is never run. A run that ends any other way marks the note "stuck", so a
+note is never retried in a loop.
 
   fallback_watchdog.py [--dry-run]
 """
@@ -44,6 +47,8 @@ RUN_LIMIT_S = int(os.environ.get("TEKNO_FALLBACK_RUN_S", 40 * 60))
 STEP_LIMIT_S = 20 * 60
 MAX_TURNS = 30
 STATUS_RE = re.compile(r"^STATUS:\s*(.+)$", re.M)
+# a hand-off note is a list of literal steps; one that asks for an opinion goes back to Claude unrun
+JUDGEMENT_RE = re.compile(r"\b(decide|judge|listen|if you think|if needed|choose|whether|sounds?|better|improve)\b", re.I)
 FIELD_RE = r"^{}:\s*(\S+)"
 STEP_RE = re.compile(r"^\d{2}-[a-z0-9_-]+\.sh$")
 
@@ -133,30 +138,72 @@ class Card:
         d = field(note, "DIR")
         self.dir = Path(d) if d.startswith(str(CARDS) + "/") else CARDS / self.slug
         self.result: tuple[str, str] | None = None
+        # The A/B showed a small model will log a failed step as a success, so the runner (not the model) enforces
+        # the plan: only steps named in NEXT, in order, a failed step stops the run (one retry), real exit codes logged.
+        nxt = note.read_text(errors="replace").split("NEXT:", 1)[-1].split("NOT ALLOWED:", 1)[0].split("LOG:", 1)[0]
+        self.plan = sorted({s for s in re.findall(r"\b\d{2}-[a-z0-9_-]+\.sh\b", nxt) if (self.steps / s).is_file()})
+        self.passed: list[str] = []
+        self.failed: str | None = None
+        self.retried = False
 
-    def log(self, text: str) -> str:
-        line = f"- {time.strftime('%H:%M')} [qwen] {' '.join(str(text).split())[:300]}\n"
+    def log(self, text: str, who: str = "qwen") -> str:
+        line = f"- {time.strftime('%H:%M')} [{who}] {' '.join(str(text).split())[:300]}\n"
         with open(self.note, "a") as f:
             f.write(line)
         return "logged"
+
+    def gate(self, step: str) -> str | None:
+        """Why the runner refuses this step now, or None."""
+        if step not in self.plan:
+            return f"refused: '{step}' is not a step in this note's NEXT list ({', '.join(self.plan) or 'none'})"
+        if self.failed:
+            if step != self.failed:
+                return f"refused: {self.failed} failed; retry it once or finish blocked"
+            if self.retried:
+                return f"refused: {step} already failed twice; finish blocked"
+        todo = [s for s in self.plan if s not in self.passed]
+        if step in self.passed:
+            return f"refused: {step} already succeeded"
+        if todo and step != todo[0]:
+            return f"refused: run the steps in order; next is {todo[0]}"
+        return None
+
+    def run_step(self, step: str) -> str:
+        why = self.gate(step)
+        if why:
+            return why
+        if self.failed == step:
+            self.retried = True
+        try:
+            r = subprocess.run(["bash", str(self.steps / step)], cwd=str(self.dir), capture_output=True, text=True,
+                               timeout=STEP_LIMIT_S)
+            code, out = r.returncode, tail(r.stdout + r.stderr)
+        except subprocess.TimeoutExpired:
+            code, out = 124, f"timeout after {STEP_LIMIT_S // 60} min"
+        last = (out.strip().splitlines() or [""])[-1]
+        self.log(f"{step} exit {code}: {last}", who="runner")
+        if code == 0:
+            self.passed.append(step)
+            self.failed = None
+        else:
+            self.failed = step
+        return f"exit {code}\n{out}"
+
+    def verdict(self, status: str, reason: str) -> tuple[str, str]:
+        """The runner has the last word: 'done' only when every planned step succeeded."""
+        missing = [s for s in self.plan if s not in self.passed]
+        if status == "done" and (self.failed or missing):
+            return "blocked", f"runner: not all steps succeeded (failed: {self.failed or '-'}, not run: " \
+                              f"{', '.join(missing) or '-'}); model said done: {reason}"
+        return status, reason
 
     def call(self, name: str, args: dict) -> str:
         if name == "read_note":
             return self.note.read_text(errors="replace")[-6000:]
         if name == "list_steps":
-            names = sorted(p.name for p in self.steps.glob("*.sh") if STEP_RE.match(p.name))
-            return "\n".join(names) or "(no step scripts)"
+            return "\n".join(self.plan) or "(no step scripts in NEXT)"
         if name == "run_step":
-            step = str(args.get("name", ""))
-            p = self.steps / step
-            if not STEP_RE.match(step) or not p.is_file():
-                return f"refused: '{step}' is not one of the prepared steps"
-            try:
-                r = subprocess.run(["bash", str(p)], cwd=str(self.dir), capture_output=True, text=True,
-                                   timeout=STEP_LIMIT_S)
-                return f"exit {r.returncode}\n{tail(r.stdout + r.stderr)}"
-            except subprocess.TimeoutExpired:
-                return f"timeout after {STEP_LIMIT_S // 60} min"
+            return self.run_step(str(args.get("name", "")))
         if name == "score_card":
             r = subprocess.run([PY, SCORE, str(self.dir)], capture_output=True, text=True, timeout=STEP_LIMIT_S,
                                env=dict(os.environ, HOUSE_ACID="0"))
@@ -176,7 +223,7 @@ class Card:
             st = args.get("status")
             if st not in ("done", "blocked"):
                 return "refused: status must be done or blocked"
-            self.result = (st, str(args.get("reason", ""))[:500])
+            self.result = self.verdict(st, str(args.get("reason", ""))[:500])
             return "finished"
         return f"refused: unknown tool '{name}'"
 
@@ -226,6 +273,12 @@ def run(note: Path, dry: bool) -> int:
     if dry:
         print(f"would continue {card.slug} (card {card.card_id or '?'}) with {MODEL}")
         return 0
+    nxt = note.read_text(errors="replace").split("NEXT:", 1)[-1].split("NOT ALLOWED:", 1)[0]
+    if JUDGEMENT_RE.search(nxt) or not card.plan:
+        why = "needs Claude: the NEXT steps ask for a judgement call" if card.plan else "no runnable steps in NEXT"
+        set_status(note, "blocked")
+        card.log(f"not started: {why}", who="runner")
+        return 0
     set_status(note, f"claimed-by-qwen {stamp}")
     mail(f"Claude has been quiet for {STALE_S // 60}+ min, so the local Qwen fallback is continuing card {card.slug} "
          f"from its hand-off note. Run log: {logp}", f"card-{card.slug}")
@@ -237,7 +290,7 @@ def run(note: Path, dry: bool) -> int:
             log.write(f"run error: {type(e).__name__}: {e}\n")
     status, why = card.result or ("stuck", "the run ended without finish")
     set_status(note, status)
-    card.log(f"run ended: {status}: {why}")
+    card.log(f"run ended: {status}: {why}", who="runner")
     mail(f"Qwen fallback ended card {card.slug}: {status} ({why}). Claude: review the note and {logp}.",
          f"card-{card.slug}")
     return 0
