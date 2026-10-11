@@ -68,3 +68,22 @@ def test_first_run_remembers_without_posting(tmp_path, monkeypatch):
     args = sent[0][1]
     assert args["to"] == ["CopperHeron", "LavenderElk"] and args["thread_id"] == "panel-errors"
     assert "acestep-api is down" in args["body_md"] and "Disk low" not in args["body_md"]
+
+
+def test_team_mail_finds_identities_without_home(tmp_path, monkeypatch):
+    import importlib
+    import team_mail
+    am = tmp_path / "real" / ".config" / "agent-mail"
+    am.mkdir(parents=True)
+    (am / "identities.json").write_text(json.dumps({"hermes": {"name": "CopperHeron", "token_file": str(am / "h.token")}}))
+    (tmp_path / "real" / ".hermes").mkdir()
+    (tmp_path / "real" / ".hermes" / "config.yaml").write_text(
+        "mcp_servers:\n  agent-mail:\n    url: http://x:8765/mcp/\n    headers:\n      Authorization: Bearer abc123\n")
+    monkeypatch.setenv("HOME", str(tmp_path / "profile-home"))  # a Hermes lane worker's HOME
+    monkeypatch.delenv("AGENT_MAIL_DIR", raising=False)
+    monkeypatch.delenv("AGENT_MAIL_BEARER", raising=False)
+    monkeypatch.setattr(team_mail, "HERE", am)
+    monkeypatch.setattr(team_mail, "DIR", team_mail._dir())
+    assert team_mail.DIR == am
+    assert team_mail.team() == {"hermes": "CopperHeron", "grok": "LavenderElk"}
+    assert team_mail.bearer() == "abc123"

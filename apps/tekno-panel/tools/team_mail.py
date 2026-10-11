@@ -24,7 +24,18 @@ from pathlib import Path
 
 URL = os.environ.get("AGENT_MAIL_URL", "http://100.84.117.126:8765/mcp/")
 PROJECT = "/hermes/music"
-DIR = Path(os.environ.get("AGENT_MAIL_DIR") or Path.home() / ".config" / "agent-mail")
+HERE = Path(__file__).resolve().parent
+
+
+def _dir() -> Path:
+    """Hermes lane workers run with a profile HOME, so find the identities next to this script first."""
+    for d in (os.environ.get("AGENT_MAIL_DIR"), HERE, Path.home() / ".config" / "agent-mail"):
+        if d and (Path(d) / "identities.json").exists():
+            return Path(d)
+    return Path(os.environ.get("AGENT_MAIL_DIR") or HERE)
+
+
+DIR = _dir()
 GROK = "LavenderElk"
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,}")
 
@@ -33,22 +44,34 @@ def bearer() -> str:
     env = os.environ.get("AGENT_MAIL_BEARER")
     if env:
         return env
-    text = (Path.home() / ".hermes" / "config.yaml").read_text()
+    # installed as <home>/.config/agent-mail/team_mail.py: the owner's Hermes config is <home>/.hermes/config.yaml
+    cands = [DIR.parents[1] / ".hermes" / "config.yaml", Path.home() / ".hermes" / "config.yaml"]
+    cfg = next((c for c in cands if c.exists()), None)
+    if not cfg:
+        sys.exit("no ~/.hermes/config.yaml with the agent-mail bearer found")
+    text = cfg.read_text()
     m = re.search(r"8765/mcp/?\s*\n\s*headers:\s*\n\s*Authorization:\s*Bearer\s+(\S+)", text)
     if not m:
         sys.exit("no agent-mail bearer found in ~/.hermes/config.yaml")
     return m.group(1).strip("'\"")
 
 
+def _ids() -> dict:
+    try:
+        return json.loads((DIR / "identities.json").read_text())
+    except (OSError, ValueError) as e:
+        sys.exit(f"team-mail is not set up here ({e}). Do not register agents yourself: ask Claude in agent-mail.")
+
+
 def team() -> dict:
-    ids = json.loads((DIR / "identities.json").read_text())
+    ids = _ids()
     out = {role: v["name"] for role, v in ids.items() if isinstance(v, dict) and v.get("name")}
     out.setdefault("grok", GROK)
     return out
 
 
 def token(role: str) -> str:
-    ids = json.loads((DIR / "identities.json").read_text())
+    ids = _ids()
     if role not in ids or not ids[role].get("token_file"):
         sys.exit(f"no token on this machine for '{role}' (known: {', '.join(k for k in ids if ids[k].get('token_file'))})")
     return Path(ids[role]["token_file"]).read_text().strip()
