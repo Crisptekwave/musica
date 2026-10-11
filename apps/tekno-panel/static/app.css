@@ -62,6 +62,8 @@ h3 small { color: var(--muted); letter-spacing: .04em; text-transform: none; fon
 .chip { border: 1px solid var(--line); background: rgba(57,255,20,.06); border-radius: 999px; padding: 6px 12px; font-size: 12px;
   font-weight: 700; letter-spacing: .1em; cursor: pointer; transition: transform .08s, background .2s; }
 .chip:active, button:active { transform: scale(.94); }
+.upd { font-size: 11px; color: var(--acid-dim); letter-spacing: .04em; white-space: nowrap; }
+.upd.stale { color: var(--amber); }
 .mode-chip.demo { border-color: var(--line-uv); background: rgba(157,77,255,.18); color: var(--uv-hot); }
 .banner { margin: 0 16px 8px; padding: 10px 14px; border-radius: 12px; font-size: 13px; background: rgba(255,45,85,.12);
   border: 1px solid rgba(255,45,85,.4); color: #ffc2cf; }

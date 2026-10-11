@@ -111,7 +111,7 @@ def load_settings() -> Settings:
     s = Settings(
         host=_env("TEKNO_HOST", "127.0.0.1"),
         port=int(_env("TEKNO_PORT", "3020")),
-        demo=_env("TEKNO_DEMO", "0").lower() in ("1", "true", "yes", "on"),
+        demo=_env("TEKNO_DEMO", _env("DEMO", "0")).lower() in ("1", "true", "yes", "on"),
         state_dir=Path(_env("TEKNO_STATE_DIR", str(HOME / ".config" / "tekno-panel"))),
         hermes_home=Path(_env("HERMES_HOME", str(HOME / ".hermes"))),
         board=_env("TEKNO_BOARD", "tekno-machine"),

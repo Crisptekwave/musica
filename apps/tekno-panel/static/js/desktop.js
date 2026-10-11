@@ -25,7 +25,7 @@
   const S = {
     snap: null, demo: false, ws: null, retry: 0, filter: store.get("tekno-dk-filter", ""), query: "",
     prevLanes: {}, cards: new Map(), drawer: null, listenCard: null, scoreCard: null, chartTab: "lufs", thread: null,
-    follow: true, nowUrl: null, knownAudio: new Set(), audioInit: false, gpuHist: [], lastGpuTs: null,
+    follow: true, nowUrl: null, knownAudio: new Set(), audioInit: false, gpuHist: [], lastGpuTs: null, wsOpen: false,
   };
 
   function toast(msg, bad) {
@@ -48,10 +48,10 @@
     if (S.ws) { S.ws.onclose = null; S.ws.close(); }
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${S.demo ? "?demo=1" : ""}`);
     S.ws = ws;
-    ws.onopen = () => { S.retry = 0; $("#live-dot").classList.add("on"); };
+    ws.onopen = () => { S.retry = 0; S.wsOpen = true; $("#live-dot").classList.add("on"); };
     ws.onmessage = e => { try { render(JSON.parse(e.data)); } catch (err) { console.error(err); } };
     ws.onclose = ev => {
-      $("#live-dot").classList.remove("on");
+      S.wsOpen = false; $("#live-dot").classList.remove("on"); stamp();
       if (ev.code === 4401) return showLogin();
       setTimeout(connect, Math.min(10000, 500 * 2 ** S.retry++));
     };
@@ -62,12 +62,24 @@
     S.snap = snap;
     const chip = $("#mode-chip");
     chip.textContent = snap.mode === "demo" ? "DEMO" : "LIVE"; chip.classList.toggle("demo", snap.mode === "demo");
+    stamp();
     const errs = Object.entries(snap.sources || {}).filter(([k, v]) => v && v.ok === false && k !== "mail").map(([k, v]) => `${k}: ${v.error}`);
     $("#banner").textContent = errs.join(" · "); $("#banner").classList.toggle("hidden", !errs.length);
     const g = snap.health?.gpu;
     if (g && g.ok && snap.ts !== S.lastGpuTs) { S.lastGpuTs = snap.ts; S.gpuHist.push(g.util || 0); if (S.gpuHist.length > 160) S.gpuHist.shift(); }
     renderKpis(snap); renderBoard(snap); bots.update(snap.lanes || {}); renderListen(snap);
     renderScores(snap); renderHealth(snap); renderChat(snap); renderDrawer();
+  }
+
+  // Time of the last snapshot the machine pushed; turns amber when it stops ticking.
+  function stamp() {
+    const el = $("#upd"); if (!el || !S.snap || !S.snap.ts) return;
+    const ts = S.snap.ts, age = Math.max(0, Date.now() / 1000 - ts);
+    const t = new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    const stale = !S.wsOpen || age > 10;
+    el.innerHTML = `<span class="muted">updated</span> ${esc(t)}${stale ? ` <span>· ${esc(ago(ts))}</span>` : ""}`;
+    el.classList.toggle("stale", stale);
+    el.title = `Last update from the machine: ${new Date(ts * 1000).toLocaleString()}`;
   }
 
   function renderKpis(snap) {
@@ -391,7 +403,7 @@
     if (S.snap) renderBoard(S.snap);
   }
   function toggleDemo() {
-    S.demo = !S.demo; store.set("tekno-demo", S.demo);
+    S.demo = !S.demo;  // per visit only: a reload always comes back LIVE
     S.prevLanes = {}; S.nowUrl = null; S.knownAudio.clear(); S.audioInit = false; S.gpuHist = []; S.drawer && closeDrawer();
     S.cards.forEach(el => el.remove()); S.cards.clear();
     player.pause(); connect(); toast(S.demo ? "Demo mode: fake data" : "Live mode");
@@ -456,8 +468,8 @@
     setInterval(() => {
       const el = player.active();
       if (el.duration && isFinite(el.duration)) { $("#seek").value = Math.round(1000 * el.currentTime / el.duration); $("#t-cur").textContent = fmtT(el.currentTime); $("#t-dur").textContent = fmtT(el.duration); }
-      $("#clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }, 250);
+    setInterval(stamp, 1000);
     let rz;
     window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { bots.layout(); if (S.snap) { renderHealth(S.snap); renderScores(S.snap); } }, 120); });
   }
@@ -468,7 +480,8 @@
     $("#dk-login").classList.add("hidden"); $("#dk-app").classList.remove("hidden");
     store.set("tekno-view", "");  // visiting the desk clears a "phone view" preference
     const q = new URLSearchParams(location.search);
-    S.demo = q.has("demo") ? q.get("demo") === "1" : store.get("tekno-demo", !!r.demo_default);
+    try { localStorage.removeItem("tekno-demo"); } catch (e) {}  // old builds remembered demo mode
+    S.demo = q.has("demo") ? q.get("demo") === "1" : !!r.demo_default;
     setFilter(S.filter);
     bots.start();
     connect();

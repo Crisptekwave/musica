@@ -35,7 +35,7 @@
   const S = {
     snap: null, screen: store.get("tekno-screen", "pipeline"), demo: false, laneFilter: null,
     prevLanes: {}, listenCard: null, scoreCard: null, thread: null, follow: true, nowUrl: null,
-    knownAudio: new Set(), seenMsgs: 0, gpuHist: [], ws: null, retry: 0,
+    knownAudio: new Set(), seenMsgs: 0, gpuHist: [], ws: null, retry: 0, wsOpen: false,
   };
 
   function toast(msg, bad) {
@@ -93,10 +93,10 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws${S.demo ? "?demo=1" : ""}`);
     S.ws = ws;
-    ws.onopen = () => { S.retry = 0; $("#live-dot").classList.add("on"); };
+    ws.onopen = () => { S.retry = 0; S.wsOpen = true; $("#live-dot").classList.add("on"); };
     ws.onmessage = e => { try { render(JSON.parse(e.data)); } catch (err) { console.error(err); } };
     ws.onclose = ev => {
-      $("#live-dot").classList.remove("on");
+      S.wsOpen = false; $("#live-dot").classList.remove("on"); stamp();
       if (ev.code === 4401) return showLogin();
       const wait = Math.min(10000, 500 * 2 ** S.retry++);
       setTimeout(connect, wait);
@@ -109,6 +109,7 @@
     S.snap = snap;
     const chip = $("#mode-chip");
     chip.textContent = snap.mode === "demo" ? "DEMO" : "LIVE"; chip.classList.toggle("demo", snap.mode === "demo");
+    stamp();
     const errs = Object.entries(snap.sources || {}).filter(([k, v]) => v && v.ok === false && k !== "mail").map(([k, v]) => `${k}: ${v.error}`);
     const ban = $("#banner"); ban.textContent = errs.join(" · "); ban.classList.toggle("hidden", !errs.length);
     renderPipeline(snap);
@@ -118,6 +119,17 @@
     pushGpu(snap);
     if (S.screen === "health") renderHealth(snap);
     renderChat(snap);
+  }
+
+  // Time of the last snapshot the machine pushed; turns amber when it stops ticking.
+  function stamp() {
+    const el = $("#upd"); if (!el || !S.snap || !S.snap.ts) return;
+    const ts = S.snap.ts, age = Math.max(0, Date.now() / 1000 - ts);
+    const t = new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    const stale = !S.wsOpen || age > 10;
+    el.textContent = stale ? `${t} · ${ago(ts)}` : t;
+    el.classList.toggle("stale", stale);
+    el.title = `Last update from the machine: ${new Date(ts * 1000).toLocaleString()}`;
   }
 
   function laneIdx(l) { const i = LANES.indexOf(l); return i < 0 ? 0 : i; }
@@ -391,7 +403,7 @@
     $("#sheet").addEventListener("touchstart", e => { sy = e.touches[0].clientY; }, { passive: true });
     $("#sheet").addEventListener("touchend", e => { if (sy != null && e.changedTouches[0].clientY - sy > 80 && $("#sheet").scrollTop <= 0) closeSheet(); sy = null; });
     $("#mode-chip").addEventListener("click", () => {
-      haptic(10); S.demo = !S.demo; store.set("tekno-demo", S.demo);
+      haptic(10); S.demo = !S.demo;  // per visit only: a reload always comes back LIVE
       S.prevLanes = {}; S.nowUrl = null; S.knownAudio.clear(); S.audioInit = false; S.gpuHist = [];
       player.pause(); connect(); toast(S.demo ? "Demo mode: fake data" : "Live mode");
     });
@@ -412,6 +424,7 @@
       const el = player.active();
       if (el.duration && isFinite(el.duration)) { $("#seek").value = Math.round(1000 * el.currentTime / el.duration); $("#t-cur").textContent = fmtT(el.currentTime); $("#t-dur").textContent = fmtT(el.duration); }
     }, 250);
+    setInterval(stamp, 1000);
     window.addEventListener("resize", () => S.snap && render(S.snap));
   }
 
@@ -422,7 +435,8 @@
     if (!r.authed) return showLogin();
     $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
     const q = new URLSearchParams(location.search);
-    S.demo = q.has("demo") ? q.get("demo") === "1" : store.get("tekno-demo", !!r.demo_default);
+    try { localStorage.removeItem("tekno-demo"); } catch (e) {}  // old builds remembered demo mode
+    S.demo = q.has("demo") ? q.get("demo") === "1" : !!r.demo_default;
     if (q.get("screen")) S.screen = q.get("screen");
     show(S.screen);
     connect();
