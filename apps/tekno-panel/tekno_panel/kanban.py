@@ -208,7 +208,10 @@ def build_tracks(board: dict, now: float | None = None) -> list[dict]:
             "sendbacks": sendbacks,
             "last_sendback": sendbacks[-1] if sendbacks else None,
             "current_task": {"id": current.id, "title": current.title, "status": current.status,
-                              "assignee": current.assignee, "last_error": current.last_error},
+                              "assignee": current.assignee,
+                              # blocked by hand (no worker error): the latest comment says why
+                              "last_error": current.last_error or (
+                                  current.comments[-1]["body"][:300] if current.status == "blocked" and current.comments else None)},
             "review_task_id": review[0].id if review else None,
             "tasks": [{"id": t.id, "lane": t.lane, "status": t.status, "title": t.title} for t in ts],
             "created_at": ts[0].created_at,

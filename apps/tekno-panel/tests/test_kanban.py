@@ -56,6 +56,7 @@ def test_build_tracks(board_db):
     dry = tracks["dry-001"]
     assert dry["lane"] == "Score" and dry["state"] == "failed"
     assert dry["last_sendback"]["to"] == "Filter" and dry["loops"] == 1
+    assert "would route" in dry["current_task"]["last_error"]  # blocked by hand: comment is the reason
     e2e = tracks["e2e-001"]
     assert e2e["lane"] == "Plan" and e2e["state"] == "working" and 0 < e2e["progress"] < 10
     rev = tracks["rev-002"]

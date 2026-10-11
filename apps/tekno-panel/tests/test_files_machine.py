@@ -125,3 +125,18 @@ def test_demo_wav_is_valid():
     import wave
     with wave.open(io.BytesIO(demo.demo_wav("kick"))) as w:
         assert w.getframerate() == demo.SR and w.getnframes() > demo.SR * 5
+
+
+def test_hard_fails_strip_numpy_repr(tmp_path):
+    import json as _j
+    c = tmp_path / "c"
+    (c / "score").mkdir(parents=True)
+    (c / "score" / "score.json").write_text(_j.dumps({"hard_fails": ["bpm [np.float64(165.375), np.float64(167.62)]"]}))
+    assert files.card_score(c)["hard_fails"] == ["bpm [165.375, 167.62]"]
+
+
+def test_ace_log_prefix_stripped(tmp_path):
+    log = tmp_path / "ace.log"
+    log.write_text("2026-10-11 09:34:21.689 | INFO     | acestep.core.generation.handler.gen:_build:38 - [generate_music] VAE decode done\n")
+    a = machine.ace("http://127.0.0.1:9", tmp_path / "nolock", log)
+    assert a["log"][-1] == "[generate_music] VAE decode done"

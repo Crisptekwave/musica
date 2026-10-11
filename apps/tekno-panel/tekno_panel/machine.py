@@ -14,6 +14,8 @@ from .files import tail
 
 PROGRESS_RE = re.compile(r"(\d{1,3})%\|")
 STEPS_RE = re.compile(r"\b(\d{1,4})/(\d{1,4})\s*\[")
+# "2026-10-11 09:34:20.367 | INFO     | acestep.core.x:func:67 - msg" -> "msg"
+LOG_PREFIX_RE = re.compile(r"^\S+ \S+ \| \w+\s+\| (?:[\w.]+:[\w<>]+:\d+ - )?")
 
 
 def _run(cmd: list[str], timeout: float = 3.0) -> tuple[int, str]:
@@ -137,7 +139,7 @@ def ace(ace_url: str, lock: Path, log: Path) -> dict:
         progress = min(95, round(100 * (time.time() - job["since"]) / 170))
     return {"ok": ok, "status": "generating" if job else ("idle" if ok else "down"), "job": job,
             "progress": progress if job else None,
-            "log": [re.sub(r"^\S+ \S+ \| \w+\s+\| ", "", ln)[:200] for ln in lines[-6:]]}
+            "log": [LOG_PREFIX_RE.sub("", ln)[:200] for ln in lines[-6:]]}
 
 
 def load() -> dict:

@@ -113,7 +113,7 @@ app shell; live data, audio and the WebSocket always go to the network.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q                       # 51 tests: kanban parsing, scores, auth, review, media, demo
+.venv/bin/python -m pytest -q                       # 53 tests: kanban parsing, scores, auth, review, media, demo
 TEKNO_DEMO=1 TEKNO_STATE_DIR=/tmp/tp .venv/bin/python -m tekno_panel.server   # http://127.0.0.1:3020
 ```
 

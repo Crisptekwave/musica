@@ -16,6 +16,7 @@ STAGE_LABEL = {
     "filter": "Filter", "mix": "Mix", "polish": "Master", "review": "Review",
 }
 LUFS_TARGET, LUFS_TOL, TP_MAX, SUBMONO_MAX, JUDGE_MIN = -9.0, 0.5, -1.0, -30.0, 6.5
+NP_REPR_RE = re.compile(r"np\.\w+\(([^()]*)\)")  # "np.float64(165.4)" -> "165.4" in score_card.py notes
 
 
 def list_cards(cards_dir: Path) -> list[Path]:
@@ -139,7 +140,7 @@ def card_score(card: Path) -> dict | None:
         "mtime": f.stat().st_mtime,
         "verdict": score.get("verdict") or ("GO" if score.get("PASS") else "NO-GO"),
         "pass": bool(score.get("PASS")),
-        "hard_fails": [str(x) for x in score.get("hard_fails") or []],
+        "hard_fails": [NP_REPR_RE.sub(r"\1", str(x)) for x in score.get("hard_fails") or []],
         "badges": score_badges(card, score),
         "metrics": {
             "lufs": score.get("LUFS_I"), "tp": score.get("true_peak_dBTP"),

@@ -150,7 +150,7 @@
     const sb = t.last_sendback;
     const stateLabel = { working: "working", failed: "failed", review: "review", done: "done", queued: "queued", offboard: "files only" }[t.state] || t.state;
     const filesNote = t.files_lane && t.files_lane !== t.lane && t.state !== "done" ? `<div class="files-note">On disk it already reached <b>${esc(t.files_lane)}</b> (board says ${esc(t.lane)}).</div>` : "";
-    const err = t.state === "failed" && t.current_task?.last_error ? `<div class="sendback"><b>Error:</b> ${esc(t.current_task.last_error)}</div>` : "";
+    const err = t.state === "failed" && t.current_task?.last_error && !(sb && sb.task_id === t.current_task.id) ? `<div class="sendback"><b>Error:</b> ${esc(t.current_task.last_error)}</div>` : "";
     const review = t.lane === "Review" && t.review_task_id ? `<div class="review-actions">
         <button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : "";
