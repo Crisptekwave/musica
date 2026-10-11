@@ -6,7 +6,8 @@ import threading
 import time
 import urllib.parse
 
-from . import acelog, files, kanban, machine, procs
+from . import acelog, files, insights, kanban, machine, procs
+from .history import History
 from .config import LANES, Settings
 from .mail import AgentMail, bearer_from_hermes, identity, load_agents, redact, threads
 
@@ -160,6 +161,10 @@ class Collector:
 
     def __init__(self, s: Settings):
         self.s = s
+        self.history = History(s.data_dir / "history.db")  # the panel's own memory, not a data source
+        self._alert_since: dict[str, float] = {}
+        self._activity: list[dict] = []
+        self._journal: list[dict] = []
         self.lock = threading.Lock()
         self.snap: dict = {"mode": "live", "ts": 0, "tracks": [], "lanes": {}, "audio": [], "scores": [],
                            "history": [], "handoff": [], "processes": [],
@@ -232,6 +237,7 @@ class Collector:
             try:
                 journal = acelog.journal(s.ace_units)
                 lora = acelog.lora_log(s.lora_log)
+                self._journal = journal
                 self._health_slow = {
                     "disk": machine.disk(s.disk_path, s.disk_warn_gb),
                     "services": [machine.service(x, journal, lora, s.cgroup_root) for x in s.services],
@@ -309,9 +315,36 @@ class Collector:
                                   "path": str(s.cards_path)},
                         "mail": {"ok": self._chat["status"] == "ok", "error": self._chat.get("error")}},
         }
+        self._enrich(snap, board, ace, now)
         with self.lock:
             self.snap = snap
         return snap
+
+    def _enrich(self, snap: dict, board: dict, ace: dict, now: float) -> None:
+        """Alerts, activity timeline and metrics history (read-only towards the machine)."""
+        al = insights.alerts(snap, now)
+        keys = {a["key"] for a in al}
+        self._alert_since = {k: v for k, v in self._alert_since.items() if k in keys}
+        for a in al:
+            a["since"] = self._alert_since.setdefault(a["key"], now)
+        snap["alerts"] = al
+        if now - self._slow_at < 0.5 or not self._activity:  # once per slow cycle
+            try:
+                self.history.add_events(insights.events(board, self._disk, ace, self._journal, self._chat, [], al))
+                self._activity = self.history.events(60)
+            except Exception as e:  # history is a nice-to-have, never break the live snapshot
+                snap.setdefault("errors", []).append(f"history: {e}")
+        snap["activity"] = self._activity
+        g = snap["health"].get("gpu") or {}
+        d = snap["health"].get("disk") or {}
+        self.history.sample({
+            "gpu_util": g.get("util"), "vram_used": g.get("mem_used"), "gpu_temp": g.get("temp"),
+            "gpu_power": g.get("power"), "load1": (snap["health"].get("load") or {}).get("1m"),
+            "disk_free": d.get("free_gb"), "ace_busy": 1.0 if ace.get("status") == "generating" else 0.0,
+            "working": float(sum(1 for L in snap["lanes"].values() if L["state"] == "working")),
+        }, now)
+        snap["sources"]["history"] = {"ok": self.history.ok, "error": self.history.error,
+                                      "path": str(self.history.path)}
 
     def _read_mail(self, slugs: list[str]) -> dict:
         ident = identity(self.agents)

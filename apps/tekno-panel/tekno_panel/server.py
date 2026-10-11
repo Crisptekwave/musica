@@ -157,6 +157,18 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
             raise HTTPException(e.status, str(e))
         return {"ok": True, "comment": text}
 
+    # ---------- history ----------
+    @app.get("/api/activity")
+    async def activity(request: Request, limit: int = 100, before: float | None = None, kind: str | None = None,
+                       card: str | None = None, q: str | None = None):
+        need_auth(request)
+        return {"events": await asyncio.to_thread(collector.history.events, limit, before, kind, card, q)}
+
+    @app.get("/api/metrics")
+    async def metrics(request: Request, range: str = "1h"):
+        need_auth(request)
+        return Response(dumps(await asyncio.to_thread(collector.history.series, range)), media_type="application/json")
+
     # ---------- media ----------
     def safe_file(root: Path, rel: str) -> Path:
         root = root.resolve()

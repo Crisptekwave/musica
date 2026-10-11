@@ -98,4 +98,5 @@ def settings(tmp_path, board_db, cards):
         state_dir=tmp_path / "state", hermes_home=tmp_path / "hermes", kanban_db=board_db, cards_dir=cards,
         machine_root=machine, disk_path=tmp_path, ace_url="http://127.0.0.1:9", ace_log=tmp_path / "none.log",
         agent_mail_url="http://127.0.0.1:9/mcp/", services=[], hermes_bin=tmp_path / "hermes-bin",
+        data_dir=tmp_path / "data",
     )

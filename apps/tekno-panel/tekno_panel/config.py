@@ -104,6 +104,9 @@ class Settings:
     # (journalctl USER_UNIT=...), their program output from the log files above.
     ace_units: tuple = ("acestep-api.service", "acestep-lora.service")
     proc_root: Path = Path("/proc")
+    # the panel's own data (metrics history, activity, audit log): on the data disk, never the root disk
+    data_dir: Path = Path("/mnt/agent-data/apps/tekno-panel-data")
+    controls: bool = True
     cgroup_root: Path = Path("/sys/fs/cgroup")
     agent_mail_url: str = "http://100.84.117.126:8765/mcp/"
     agent_mail_project: str = "hermes-music"
@@ -166,6 +169,8 @@ def load_settings() -> Settings:
         agent_mail_projects=tuple(x.strip() for x in _env("TEKNO_AGENT_MAIL_PROJECTS", "hermes-music,tekno-machine").split(",") if x.strip()),
         tracks_per_day_cap=int(_env("TEKNO_TRACKS_PER_DAY_CAP", "6")),
         push_interval=float(_env("TEKNO_PUSH_INTERVAL", "1.5")),
+        data_dir=Path(_env("TEKNO_DATA_DIR", "/mnt/agent-data/apps/tekno-panel-data")),
+        controls=_env("TEKNO_CONTROLS", "1").lower() in ("1", "true", "yes", "on"),
     )
     s.hermes_bin = Path(_env("TEKNO_HERMES_BIN", str(s.hermes_home / "hermes-agent" / "venv" / "bin" / "hermes")))
     if os.environ.get("TEKNO_KANBAN_DB"):
