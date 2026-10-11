@@ -1,0 +1,9 @@
+[Unit]
+Description=Tekno Machine fallback watchdog (local Qwen continues Claude's hand-off notes when Claude is out of its limit)
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/tekno-panel/env
+ExecStart=/usr/bin/python3 %h/.config/agent-mail/fallback_watchdog.py
+Nice=10
+TimeoutStartSec=50min

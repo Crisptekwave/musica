@@ -25,6 +25,17 @@ from pathlib import Path
 URL = os.environ.get("AGENT_MAIL_URL", "http://100.84.117.126:8765/mcp/")
 PROJECT = "/hermes/music"
 HERE = Path(__file__).resolve().parent
+# every post as Claude doubles as Claude's heartbeat for the local fallback watchdog (fallback_watchdog.py)
+HEARTBEAT = Path(os.environ.get("TEKNO_FALLBACK_DIR", "/mnt/agent-data/tekno_machine/fallback")) / "claude_heartbeat"
+
+
+def beat(role: str) -> None:
+    if role != "claude":
+        return
+    try:
+        HEARTBEAT.touch()
+    except OSError:
+        pass  # no fallback dir on this machine: nothing to signal
 
 
 def _dir() -> Path:
@@ -147,6 +158,7 @@ def main(argv=None) -> int:
         if a.thread:
             args["thread_id"] = a.thread
         call("send_message", args)
+        beat(a.role)
         print(f"sent as {me} to {', '.join(to)}" + (f" in {a.thread}" if a.thread else ""))
     elif a.cmd == "inbox":
         res = call("fetch_inbox", {"project_key": PROJECT, "agent_name": me, "registration_token": token(a.role),
@@ -161,6 +173,7 @@ def main(argv=None) -> int:
     elif a.cmd == "reply":
         call("reply_message", {"project_key": PROJECT, "message_id": a.message_id, "sender_name": me,
                                "sender_token": token(a.role), "body_md": a.body})
+        beat(a.role)
         print(f"replied to #{a.message_id} as {me}")
     elif a.cmd == "ack":
         call("acknowledge_message", {"project_key": PROJECT, "agent_name": me, "message_id": a.message_id,
