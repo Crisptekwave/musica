@@ -418,3 +418,89 @@ def test_collector_snapshot_live(settings, machine_tree, tmp_path, monkeypatch):
     assert snap["freshness"]["files"] and len(snap["history"]) >= 4
     e2e = next(t for t in snap["tracks"] if t["slug"] == "e2e-001")
     assert e2e["plan"]["bpm"] == 165.0 and e2e["runs"][-1]["name"] == "run5.log"
+
+
+# ---------------------------------------------------------------- regressions from the review
+def test_refresh_survives_ace_take_without_lane_process(settings, tmp_path):
+    """A take started from the ACE UI: fresh log, no GPU lock, no lane script. Used to crash every refresh."""
+    log = tmp_path / "acestep.log"
+    log.write_text(ACE_LOG)
+    settings.ace_log = log
+    settings.proc_root = tmp_path / "noproc"
+    snap = Collector(settings).refresh()
+    a = snap["health"]["ace"]
+    assert a["status"] == "generating" and a["job"]["script"] is None and a["job"]["card"] is None
+    json.dumps(snap)
+
+
+def test_ace_prefers_lane_script_over_worker(tmp_path):
+    worker = {"pid": 1, "script": "hermes -p tekno-generate", "lanes": ["Generate"], "card": "e2e-001", "since": 1.0,
+              "worker": True}
+    script = {"pid": 2, "script": "ace_sections.py", "lanes": ["Generate"], "card": "e2e-001", "since": 9.0}
+    a = machine.ace("http://127.0.0.1:9", tmp_path / "nolock", tmp_path / "none", [worker, script])
+    assert a["job"]["script"] == "ace_sections.py" and a["job"]["since"] == 9.0
+
+
+def test_crashed_run_log_without_process_is_not_working(machine_tree):
+    c = machine_tree / "cards" / "e2e-001"
+    (c / "run6.log").write_text("=== edit 11:50:00\n=== stems 11:50:02\nTraceback (most recent call last):\n")
+    disk = files.scan(machine_tree / "cards", machine_tree / "handoff")
+    board = [{"slug": "e2e-001", "lane": "Score", "state": "failed", "progress": 83, "loops": 0, "created_at": 1,
+              "last_activity": 1, "tasks": [], "sendbacks": []}]
+    t = merge_tracks(board, disk, {}, time.time(), [])[0]
+    assert t["state"] == "failed" and t["lane"] == "Score" and not t.get("live")
+
+
+def test_odd_score_files_do_not_break_the_scan(machine_tree, tmp_path):
+    c = machine_tree / "cards" / "e2e-001"
+    (c / "attempt3" / "score" / "score.json").write_text(
+        '{"corr": 0.97, "key_top3": [[]], "mix_judge": {"overall": "n/a"}, "hard_fails": "bpm", '
+        '"bpm_acf_4_16_64": 165, "LUFS_I": NaN, "sub_S_over_M_dB": -Infinity, "EAR": null}')
+    weird = machine_tree / "cards" / "zz-002" / "score"
+    weird.mkdir(parents=True)
+    (weird / "score.json").write_text("[1, 2, 3]")
+    (machine_tree / "handoff" / "latest").symlink_to(machine_tree / "handoff" / "gone")
+    d = files.scan(machine_tree / "cards", machine_tree / "handoff")
+    assert "e2e-001" in d["cards"] and d["handoff"] and len(d["history"]) >= 3
+    a3 = next(h for h in d["history"] if h["run"] == "attempt3")
+    assert a3["metrics"]["lufs"] is None and a3["metrics"]["sub"] is None
+    from tekno_panel.server import dumps
+    json.loads(dumps(d))  # strict JSON, no NaN
+
+
+def test_snapshot_json_is_strict_even_with_nan():
+    from tekno_panel.server import dumps
+    assert json.loads(dumps({"a": float("nan"), "b": [float("-inf"), 1.5]})) == {"a": None, "b": [None, 1.5]}
+
+
+def test_arrow_chain_is_not_a_route():
+    from tekno_panel import kanban
+    assert kanban.parse_routes("NO-GO. edit -> stems -> mix -> master all ran; score FAIL bpm 164.97", "Score") == []
+    assert kanban.parse_routes("FAIL: chain was Mix -> Polish -> Master", "Score") == []
+    r = kanban.parse_routes("BLOCKED: HF tilt -8.1 -> Mix. Not sent to Review.", "Score")
+    assert [x["to"] for x in r] == ["Mix"]
+
+
+@pytest.mark.parametrize("argv,ok", [
+    (["vim", f"{S}/mix_stems.py"], False),
+    (["less", f"{S}/score_card.py"], False),
+    (["grep", "-n", "x", f"{S}/stems.py"], False),
+    (["/home/k/.hermes/venv/bin/python", "hermes", "-p", "tekno-mix", "--cli"], False),  # interactive session
+    ([PY, "-u", f"{S}/stems.py", f"{CARDS}/e2e-001"], True),
+    (["uv", "run", "python", f"{S}/variation.py", f"{CARDS}/e2e-001"], True),
+    ([f"{S}/song_plan.py", f"{CARDS}/e2e-001"], True),
+    (["/bin/bash", f"{S}/run_e2e.sh", "e2e-001", "edit"], True),
+])
+def test_only_running_scripts_count(argv, ok):
+    assert (procs.classify(argv) is not None) == ok
+
+
+def test_chat_keeps_track_threads_and_own_projects(settings, monkeypatch):
+    c = Collector(settings)
+    msgs = mail.normalize_messages(UNIFIED["messages"] + [
+        {"id": 9, "thread_id": "secret-plans", "sender": "X", "project_slug": "other-project", "body_md": "no",
+         "created_ts": "2026-10-11 10:00:00.000000"}])
+    monkeypatch.setattr(c.mail, "directory", lambda: [])
+    monkeypatch.setattr(c.mail, "unified", lambda limit=400: msgs)
+    chat = c._read_mail(["e2e-001"])
+    assert {m["thread"] for m in chat["messages"]} == {"card-e2e-001", "general"}

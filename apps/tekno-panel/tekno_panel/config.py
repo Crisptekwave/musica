@@ -107,6 +107,8 @@ class Settings:
     cgroup_root: Path = Path("/sys/fs/cgroup")
     agent_mail_url: str = "http://100.84.117.126:8765/mcp/"
     agent_mail_project: str = "hermes-music"
+    # chat shows track threads (card-<slug>) from any project plus all mail of these projects
+    agent_mail_projects: tuple = ("hermes-music", "tekno-machine")
     tracks_per_day_cap: int = 6
     push_interval: float = 1.5
     services: list[dict] = field(default_factory=list)
@@ -161,6 +163,7 @@ def load_settings() -> Settings:
         ace_units=tuple(u.strip() for u in _env("TEKNO_ACE_UNITS", "acestep-api.service,acestep-lora.service").split(",") if u.strip()),
         agent_mail_url=_env("TEKNO_AGENT_MAIL_URL", "http://100.84.117.126:8765/mcp/"),
         agent_mail_project=_env("TEKNO_AGENT_MAIL_PROJECT", "hermes-music"),
+        agent_mail_projects=tuple(x.strip() for x in _env("TEKNO_AGENT_MAIL_PROJECTS", "hermes-music,tekno-machine").split(",") if x.strip()),
         tracks_per_day_cap=int(_env("TEKNO_TRACKS_PER_DAY_CAP", "6")),
         push_interval=float(_env("TEKNO_PUSH_INTERVAL", "1.5")),
     )

@@ -15,6 +15,8 @@ from .config import LANE_DSP_MODES, PROFILE_LANES, SCRIPT_LANES
 SCRIPT_RE = re.compile(r"(?:^|/)scripts/(?P<name>[A-Za-z0-9_]+)\.(?P<ext>py|sh)$")
 CARD_RE = re.compile(r"/cards/(?P<slug>[A-Za-z0-9][A-Za-z0-9._-]{0,63})(?:/|$)")
 TASK_RE = re.compile(r"\bwork kanban task (?P<task>t_[0-9a-f]{6,32})\b")
+# argv[0] of a process that is *running* a script (not an editor or pager that merely has it open)
+INTERP_RE = re.compile(r"^(?:python[\d.]*|bash|sh|dash|uv|env|nice|timeout)$")
 
 
 def _read(path: Path, limit: int = 65536) -> bytes | None:
@@ -60,6 +62,10 @@ def classify(argv: list[str]) -> dict | None:
         m = SCRIPT_RE.search(a)
         if not m:
             continue
+        # the script must be what runs: argv[0] itself, or an interpreter + a few flags before it
+        if i and not (INTERP_RE.match(Path(argv[0]).name) and i <= 4 and
+                      all(x.startswith("-") or x == "run" or INTERP_RE.match(Path(x).name) for x in argv[1:i])):
+            return None
         name = m.group("name")
         if m.group("ext") == "sh":
             if name in ("run_e2e", "run_lanes"):
@@ -84,8 +90,8 @@ def classify(argv: list[str]) -> dict | None:
     # Hermes kanban worker: "hermes -p tekno-mix ... chat -q 'work kanban task t_x'"
     if "-p" in argv:
         prof = argv[argv.index("-p") + 1] if argv.index("-p") + 1 < len(argv) else ""
-        if prof in PROFILE_LANES:
-            task = next((m.group("task") for a in argv for m in [TASK_RE.search(a)] if m), None)
+        task = next((m.group("task") for a in argv for m in [TASK_RE.search(a)] if m), None)
+        if prof in PROFILE_LANES and task:  # an interactive "hermes -p tekno-mix" session is not lane work
             return {"script": f"hermes -p {prof}", "lanes": [PROFILE_LANES[prof]], "card": card_from_argv(argv),
                     "task": task, "worker": True}
     return None

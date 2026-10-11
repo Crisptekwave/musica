@@ -4,6 +4,8 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import logging
+import math
 import os
 import re
 import statistics
@@ -27,15 +29,25 @@ RUN_STEP_RE = re.compile(r"^=== (?P<step>[a-z_]+)(?: (?P<hms>\d{1,2}:\d{2}:\d{2}
 SCORE_EXIT_RE = re.compile(r"^score exit (?P<code>\d+)\s*$")
 
 
+log = logging.getLogger("tekno.files")
+
+
 def _num(x):
-    return x if isinstance(x, (int, float)) and not isinstance(x, bool) else None
+    """A finite number or None (score_card.py can write NaN / -Infinity, which JSON can't carry to the browser)."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return None
+    return x if math.isfinite(x) else None
+
+
+def _loads(text):
+    return json.loads(text, parse_constant=lambda c: None)  # NaN / Infinity -> null
 
 
 def read_json(path: Path, max_bytes: int = 2_000_000):
     try:
         if path.stat().st_size > max_bytes:
             return None
-        return json.loads(path.read_text(errors="replace"))
+        return _loads(path.read_text(errors="replace"))
     except (OSError, ValueError):
         return None
 
@@ -172,8 +184,10 @@ def parse_run_log(path: Path) -> dict | None:
             continue
         if line.startswith('{"verdict"'):
             try:
-                j = json.loads(line)
+                j = _loads(line)
             except ValueError:
+                continue
+            if not isinstance(j, dict):
                 continue
             verdict, draft = j.get("verdict"), _num(j.get("overall_draft"))
             fails = [NP_REPR_RE.sub(r"\1", str(x))[:200] for x in j.get("fails") or []]
@@ -208,8 +222,8 @@ def _judge(root: Path, score: dict) -> dict:
     j = score.get("mix_judge")
     verdict, overall = None, None
     if isinstance(j, dict):
-        overall = j.get("overall")
-        verdict = j.get("verdict")
+        overall = _num(j.get("overall"))
+        verdict = j.get("verdict") if isinstance(j.get("verdict"), str) else None
     md = root / "score" / "judge.md"
     if md.exists():
         txt = md.read_text(errors="replace")[:20000]
@@ -223,7 +237,7 @@ def _judge(root: Path, score: dict) -> dict:
         return {"label": "Mix Judge", "value": "pending", "target": f">= {JUDGE_MIN}", "status": "na",
                 "draft": score.get("auto_draft_overall"),
                 "detail": "auto-draft only; Mix Judge has not scored this master yet"}
-    ok = float(overall) >= JUDGE_MIN and (verdict or "").upper() not in ("FAIL", "NO-GO")
+    ok = overall >= JUDGE_MIN and (verdict or "").upper() not in ("FAIL", "NO-GO")
     return {"label": "Mix Judge", "value": f"{overall}" + (f" {verdict}" if verdict else ""),
             "target": f">= {JUDGE_MIN}", "status": "pass" if ok else "fail"}
 
@@ -244,10 +258,22 @@ def ref_compare(score: dict) -> dict | None:
     }
 
 
+def _list(x) -> list:
+    return x if isinstance(x, list) else []
+
+
+def _top_key(score: dict):
+    top = _list(score.get("key_top3"))
+    first = top[0] if top else None
+    if isinstance(first, (list, tuple)) and first and isinstance(first[0], str):
+        return first[0]
+    return score.get("key") if isinstance(score.get("key"), str) else None
+
+
 def score_badges(root: Path, score: dict) -> list[dict]:
-    hard = " ".join(str(x) for x in score.get("hard_fails") or []).lower()
+    hard = " ".join(str(x) for x in _list(score.get("hard_fails"))).lower()
     # BPM: qc_gate checks the 16- and 64-beat ACF values against the brief's target (+-0.05)
-    bpms = [b for b in score.get("bpm_acf_4_16_64") or [] if _num(b) is not None]
+    bpms = [b for b in _list(score.get("bpm_acf_4_16_64")) if _num(b) is not None]
     target = _num(score.get("bpm_target"))
     if len(bpms) >= 3:
         bpm = round(bpms[1], 2)
@@ -258,8 +284,8 @@ def score_badges(root: Path, score: dict) -> list[dict]:
         detail, bpm_ok = None, (None if bpm is None else 160 <= float(bpm) <= 180)
     if "bpm" in hard:
         bpm_ok = False
-    key = (score.get("key_top3") or [[score.get("key")]])[0][0]
-    key_t = score.get("key_target")
+    key = _top_key(score)
+    key_t = score.get("key_target") if isinstance(score.get("key_target"), str) else None
     key_ok = None if not key else ((key == key_t) if key_t else "minor" in str(key).lower())
     if "key" in hard:
         key_ok = False
@@ -267,7 +293,7 @@ def score_badges(root: Path, score: dict) -> list[dict]:
     lufs = _num(score.get("LUFS_I"))
     tp = _num(score.get("true_peak_dBTP"))
     sub = _num(score.get("sub_S_over_M_dB"))
-    corr = score.get("corr") or {}
+    corr = score.get("corr") if isinstance(score.get("corr"), dict) else {}
     c_full = _num(corr.get("full"))
     gate = {b: _num(corr.get(b)) for b in CORR_GATE_BANDS if _num(corr.get(b)) is not None}
     corr_ok = None if not gate and c_full is None else (all(v >= CORR_MIN for v in gate.values()) and "corr" not in hard)
@@ -280,7 +306,7 @@ def score_badges(root: Path, score: dict) -> list[dict]:
     if gap is not None:
         mono_ok, mono_v = gap <= MONOTONY_MAX, f"{gap:g} bars"
     elif isinstance(mono, dict):
-        mono_ok, mono_v = bool(mono.get("pass", mono.get("PASS"))), mono.get("max_bars_without_change", "ok")
+        mono_ok, mono_v = bool(mono.get("pass", mono.get("PASS"))), str(mono.get("max_bars_without_change", "ok"))
     else:
         mono_ok, mono_v = None, "not measured"
     if "monoton" in hard:
@@ -332,7 +358,7 @@ def score_entry(card_name: str, f: Path, root: Path, run: str) -> dict | None:
     except OSError:
         return None
     try:
-        score = json.loads(raw)
+        score = _loads(raw)
         if not isinstance(score, dict):
             raise ValueError("not an object")
     except ValueError as e:
@@ -340,8 +366,9 @@ def score_entry(card_name: str, f: Path, root: Path, run: str) -> dict | None:
                 "sha": _sha(raw), "metrics": {}, "hard_fails": [], "verdict": "?", "pass": False}
     verdict = score.get("verdict") or ("GO" if score.get("PASS") else "NO-GO")
     ref = ref_compare(score)
-    bpms = [b for b in score.get("bpm_acf_4_16_64") or [] if _num(b) is not None]
+    bpms = [b for b in _list(score.get("bpm_acf_4_16_64")) if _num(b) is not None]
     drafts = score.get("auto_draft_scores")
+    corr = score.get("corr") if isinstance(score.get("corr"), dict) else {}
     return {
         "card": card_name,
         "run": run,
@@ -350,11 +377,11 @@ def score_entry(card_name: str, f: Path, root: Path, run: str) -> dict | None:
         "verdict": verdict,
         "go": str(verdict).upper().startswith("GO") or bool(score.get("PASS") and "verdict" not in score),
         "pass": bool(score.get("PASS")),
-        "hard_fails": [NP_REPR_RE.sub(r"\1", str(x)) for x in score.get("hard_fails") or []],
+        "hard_fails": [NP_REPR_RE.sub(r"\1", str(x)) for x in _list(score.get("hard_fails"))],
         "badges": score_badges(root, score),
         "metrics": {
             "lufs": _num(score.get("LUFS_I")), "tp": _num(score.get("true_peak_dBTP")),
-            "sub": _num(score.get("sub_S_over_M_dB")), "corr": _num((score.get("corr") or {}).get("full")),
+            "sub": _num(score.get("sub_S_over_M_dB")), "corr": _num(corr.get("full")),
             "draft": _num(score.get("auto_draft_overall")), "knock": _num(score.get("fair_knock100_250_median")),
             "ref_dist": (ref or {}).get("dist"), "tilt": (ref or {}).get("tilt"),
             "bpm16": bpms[1] if len(bpms) > 1 else None, "bpm64": bpms[2] if len(bpms) > 2 else None,
@@ -362,7 +389,7 @@ def score_entry(card_name: str, f: Path, root: Path, run: str) -> dict | None:
         },
         "draft_scores": {k: _num(v) for k, v in drafts.items()} if isinstance(drafts, dict) else None,
         "ref": ref,
-        "ear": score.get("EAR") or [],
+        "ear": [str(x) for x in _list(score.get("EAR"))],
         "duration_s": _num(score.get("duration_s")),
     }
 
@@ -403,35 +430,49 @@ def scan_handoff(handoff_dir: Path, card_names: list[str]) -> tuple[list[dict], 
     packages, audio, scores = [], [], []
     if not handoff_dir or not handoff_dir.is_dir():
         return packages, audio, scores
-    for d in sorted(handoff_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)[:40]:
-        if not d.is_dir() or d.name.startswith("."):
-            continue
-        card = handoff_card(d.name, card_names)
-        items = []
-        for f in list(d.iterdir()) + (list((d / "stems").iterdir()) if (d / "stems").is_dir() else []):
-            if f.is_file() and f.suffix.lower() in AUDIO_EXT:
-                st = f.stat()
-                stem = f.parent.name == "stems"
-                items.append({"card": card, "root": "handoff", "project": d.name,
-                              "path": f"{d.name}/{f.relative_to(d).as_posix()}", "name": f.stem,
-                              "stage": "Handoff stem" if stem else "Handoff", "kind": "stem" if stem else "render",
-                              "size": st.st_size, "mtime": st.st_mtime})
-        audio.extend(items)
-        sc = score_entry(card, d / "score.json", d, "handoff") if (d / "score.json").is_file() else None
-        if sc:
-            scores.append(sc)
-        master = next((i for i in items if i["kind"] == "render"), None)
-        note = ""
+
+    def mtime(p):
         try:
-            note = (d / "HANDOFF.md").read_text(errors="replace")[:800]
-        except OSError:
-            pass
-        packages.append({"project": d.name, "card": card, "mtime": d.stat().st_mtime,
-                         "master": master["path"] if master else None, "master_mtime": master["mtime"] if master else None,
-                         "stems": sum(1 for i in items if i["kind"] == "stem"),
-                         "verdict": sc["verdict"] if sc else None, "draft": (sc or {}).get("metrics", {}).get("draft"),
-                         "score_sha": sc["sha"] if sc else None, "note": note})
+            return p.stat().st_mtime
+        except OSError:  # dangling symlink, or a package renamed while handoff.py works
+            return 0.0
+    dirs = [d for d in handoff_dir.iterdir() if not d.name.startswith(".") and d.is_dir()]
+    for d in sorted(dirs, key=mtime, reverse=True)[:40]:
+        try:
+            _scan_package(d, card_names, packages, audio, scores)
+        except Exception as e:  # one broken package must not hide the others
+            log.warning("handoff %s skipped: %s", d.name, e)
     return packages, audio, scores
+
+
+def _scan_package(d: Path, card_names: list[str], packages: list, audio: list, scores: list) -> None:
+    card = handoff_card(d.name, card_names)
+    items = []
+    for f in list(d.iterdir()) + (list((d / "stems").iterdir()) if (d / "stems").is_dir() else []):
+        if f.is_file() and f.suffix.lower() in AUDIO_EXT:
+            st = f.stat()
+            stem = f.parent.name == "stems"
+            items.append({"card": card, "root": "handoff", "project": d.name,
+                          "path": f"{d.name}/{f.relative_to(d).as_posix()}", "name": f.stem,
+                          "stage": "Handoff stem" if stem else "Handoff", "kind": "stem" if stem else "render",
+                          "size": st.st_size, "mtime": st.st_mtime})
+    sc = score_entry(card, d / "score.json", d, "handoff") if (d / "score.json").is_file() else None
+    master = next((i for i in items if i["kind"] == "render"), None)
+    note = ""
+    try:
+        note = (d / "HANDOFF.md").read_text(errors="replace")[:800]
+    except OSError:
+        pass
+    pkg = {"project": d.name, "card": card, "mtime": d.stat().st_mtime,
+           "master": master["path"] if master else None, "master_mtime": master["mtime"] if master else None,
+           "stems": sum(1 for i in items if i["kind"] == "stem"),
+           "verdict": sc["verdict"] if sc else None, "draft": (sc or {}).get("metrics", {}).get("draft"),
+           "score_sha": sc["sha"] if sc else None, "note": note}
+    # all or nothing per package
+    audio.extend(items)
+    if sc:
+        scores.append(sc)
+    packages.append(pkg)
 
 
 # ---------------------------------------------------------------- whole scan
@@ -453,7 +494,8 @@ def scan(cards_dir: Path, handoff_dir: Path | None = None, max_cards: int = 40) 
                 "attempts": len(hist), "handoff": [],
                 "master_mtime": max((m.stat().st_mtime for m in masters if m.exists()), default=None),
             }
-        except OSError:
+        except Exception as e:  # one odd card (old score format, file vanishing mid-run) must not blank the rest
+            log.warning("card %s skipped: %s", c.name, e)
             continue
     packages, h_audio, h_scores = scan_handoff(handoff_dir, [c.name for c in cards]) if handoff_dir else ([], [], [])
     audio.extend(h_audio)

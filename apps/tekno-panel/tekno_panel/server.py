@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,6 +20,24 @@ from .state import Collector
 STATIC = Path(__file__).resolve().parent.parent / "static"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
        "media-src 'self' blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+
+
+def _finite(o):
+    """Replace NaN / Infinity (not valid JSON) anywhere in a snapshot with null."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o
+
+
+def dumps(snap: dict) -> str:
+    try:
+        return json.dumps(snap, default=str, allow_nan=False)
+    except ValueError:
+        return json.dumps(_finite(snap), default=str, allow_nan=False)
 
 
 def create_app(settings: Settings | None = None, start_collector: bool = True, runner=None) -> FastAPI:
@@ -97,7 +116,8 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
     @app.get("/api/state")
     async def state(request: Request, demo: str | None = None):
         need_auth(request)
-        return await asyncio.to_thread(snapshot, want_demo(demo))
+        snap = await asyncio.to_thread(snapshot, want_demo(demo))
+        return Response(dumps(snap), media_type="application/json")
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket):
@@ -112,7 +132,7 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
                 snap = await asyncio.to_thread(snapshot, use_demo)
                 if snap.get("ts") != last:
                     last = snap.get("ts")
-                    await websocket.send_text(json.dumps(snap, default=str))
+                    await websocket.send_text(dumps(snap))
                 await asyncio.sleep(1.0 if use_demo else s.push_interval)
         except (WebSocketDisconnect, RuntimeError):
             return

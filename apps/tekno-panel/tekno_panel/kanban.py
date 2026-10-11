@@ -120,6 +120,10 @@ def parse_routes(text: str, from_lane: str | None) -> list[dict]:
         marks = list(MARK_RE.finditer(line))
         for i, m in enumerate(marks):
             seg = line[m.end(): marks[i + 1].start() if i + 1 < len(marks) else len(line)]
+            if m.group(0) in ("->", "→"):
+                prev = re.split(r"[\s/(),;:]+", line[: m.start()].strip())[-1:] or [""]
+                if normalize_lane(prev[0].strip(".")):
+                    continue  # "Mix -> Polish -> Master": a chain of lanes that ran, not a route
             masked, groups = _mask_parens(seg)
             masked = re.split(r"\.\s+|\.$|;", masked)[0]  # the routing ends at the sentence end
             before = _clause_before(line[: m.start()])

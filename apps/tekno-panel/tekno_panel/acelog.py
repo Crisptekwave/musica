@@ -217,7 +217,8 @@ def ace_state(health_ok: bool, parsed: dict, log_mtime: float | None, lock: dict
     now = now or time.time()
     job = parsed.get("job")
     fresh = bool(log_mtime and now - log_mtime < 120)
-    proc = gen_procs[0] if gen_procs else None
+    # a kanban worker starts ace_sections.py as a child: report the script, not the worker
+    proc = next((p for p in gen_procs if not p.get("worker")), gen_procs[0] if gen_procs else None)
     generating = bool(proc or lock or (job and fresh))
     card = (proc or {}).get("card") or (lock or {}).get("card")
     info = None

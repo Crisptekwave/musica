@@ -89,7 +89,8 @@ def merge_tracks(board_tracks: list[dict], disk: dict, ace: dict, now: float,
         t["board_behind"] = bool(t["tasks"] and info.get("mtime") and info["mtime"] - board_at > 300)
         # live work wins over the board status: a lane script running on this card, or a run still being written
         live = [p for p in running if p.get("card") == slug and p.get("lanes")]
-        run = active_run(info, now)
+        # an unfinished run log alone is not proof of work (the run may have crashed): need its process
+        run = active_run(info, now) if any(p.get("card") == slug for p in running) else None
         if live:
             lane = max((ln for p in live for ln in p["lanes"] if ln in LANES), key=_lane_idx, default=t["lane"])
             p = max(live, key=lambda x: max(_lane_idx(ln) for ln in x["lanes"]))
@@ -127,7 +128,7 @@ def apply_processes(lanes: dict, running: list[dict], disk: dict, now: float) ->
                 continue
             L["state"] = "working"
             L["task"] = {"id": None, "title": f"[{p.get('card') or '?'}] {p['script']}", "assignee": f"pid {p['pid']}",
-                         "since": p.get("since"), "via": "process"}
+                         "since": p.get("since"), "via": "process", "card": p.get("card")}
     # between two quick steps of run_e2e.sh nothing may be running for a moment: use the run log
     for slug, info in (disk.get("cards") or {}).items():
         run = active_run(info, now)
@@ -137,7 +138,7 @@ def apply_processes(lanes: dict, running: list[dict], disk: dict, now: float) ->
         if L and L["state"] != "working":
             L["state"] = "working"
             L["task"] = {"id": None, "title": f"[{slug}] {run['last']['step']}", "assignee": run["name"],
-                         "since": run["last"]["at"], "via": "run log"}
+                         "since": run["last"]["at"], "via": "run log", "card": slug}
 
 
 def section_progress(cards_dir, card: str | None, since: float | None, plan: dict | None) -> dict | None:
@@ -169,13 +170,26 @@ class Collector:
         self._hist: dict[str, dict] = {}
         self._health_slow: dict = {}
         self._chat = self.snap["chat"]
+        self._slugs: list[str] = []
+        self._mail_thread: threading.Thread | None = None
         self._stop = threading.Event()
         self.agents = load_agents(s.state_dir)
         self.mail = AgentMail(s.agent_mail_url, s.agent_mail_project,
                               bearer_from_hermes(s.hermes_home / "config.yaml"), self.agents)
 
     def start(self):
+        self._mail_thread = threading.Thread(target=self._mail_loop, name="tekno-mail", daemon=True)
+        self._mail_thread.start()
         threading.Thread(target=self._loop, name="tekno-collector", daemon=True).start()
+
+    def _mail_loop(self):
+        """agent-mail on its own clock: a slow or unreachable server never delays the live snapshot."""
+        wait = 8.0
+        while not self._stop.is_set():
+            chat = self._read_mail(self._slugs)
+            self._chat = chat
+            wait = 8.0 if chat["status"] in ("ok", "no_tokens") else min(120.0, wait * 2)  # back off while down
+            self._stop.wait(wait)
 
     def stop(self):
         self._stop.set()
@@ -213,19 +227,22 @@ class Collector:
             try:
                 self._disk = files.scan(s.cards_path, s.handoff_path)
                 self._disk["ok"] = True
-            except OSError as e:
-                self._disk = {"audio": [], "scores": [], "files_lane": {}, "cards": {}, "handoff": [], "history": [],
-                              "ok": False, "error": str(e)}
-            journal = acelog.journal(s.ace_units)
-            lora = acelog.lora_log(s.lora_log)
-            self._health_slow = {
-                "disk": machine.disk(s.disk_path, s.disk_warn_gb),
-                "services": [machine.service(x, journal, lora, s.cgroup_root) for x in s.services],
-                "journal": journal[-10:], "lora": lora,
-            }
+            except Exception as e:  # keep the last good scan, flag the source
+                self._disk = {**self._disk, "ok": False, "error": f"card scan failed: {e}"}
+            try:
+                journal = acelog.journal(s.ace_units)
+                lora = acelog.lora_log(s.lora_log)
+                self._health_slow = {
+                    "disk": machine.disk(s.disk_path, s.disk_warn_gb),
+                    "services": [machine.service(x, journal, lora, s.cgroup_root) for x in s.services],
+                    "journal": journal[-10:], "lora": lora,
+                }
+            except Exception as e:
+                self._health_slow = {**self._health_slow, "error": f"health probes failed: {e}"}
         board = kanban.read_board(s.kanban_path)
         slugs = sorted({t.slug for t in board["tasks"] if t.slug} | set(self._disk["files_lane"]))
-        if now - self._mail_at > 8:
+        self._slugs = slugs
+        if not self._mail_thread and now - self._mail_at > 8:  # tests / one-shot use: read inline
             self._mail_at = now
             self._chat = self._read_mail(slugs)
         board_tracks = kanban.build_tracks(board, now)
@@ -238,7 +255,7 @@ class Collector:
         gen = [p for p in running if "Generate" in (p.get("lanes") or [])]
         ace = machine.ace(s.ace_url, s.machine_root / ".gpu.lock", s.ace_log, gen, s.proc_root, now)
         job = ace.get("job")
-        if job and job.get("script", "").startswith("ace_sections"):
+        if job and (job.get("script") or "").startswith("ace_sections"):
             plan = ((self._disk.get("cards") or {}).get(job.get("card")) or {}).get("plan")
             ace["sections"] = section_progress(s.cards_path, job.get("card"), job.get("since"), plan)
         apply_processes(lanes, running, self._disk, now)
@@ -246,14 +263,15 @@ class Collector:
             g = lanes["Generate"]
             g["state"] = "working"
             g["task"] = g["task"] or {"id": None, "title": f"[{job.get('card') or 'ACE'}] ACE take",
-                                      "assignee": "ace-step", "since": job.get("since"), "via": "ace log"}
+                                      "assignee": "ace-step", "since": job.get("since"), "via": "ace log",
+                                      "card": job.get("card")}
         if ace.get("events"):
             g = lanes["Generate"]
             g["log"] = (g["log"] + [{"at": e["at"] or now, "text": f"ACE: {e['text']}"} for e in ace["events"][-3:]])[-8:]
         cards_info = self._disk.get("cards") or {}
         for lane, L in lanes.items():
             if L["state"] == "working" and lane != "Generate" and L["task"]:
-                slug = kanban.parse_title(L["task"]["title"])[0]
+                slug = L["task"].get("card") or kanban.parse_title(L["task"]["title"])[0]
                 runs = (cards_info.get(slug) or {}).get("runs") or []
                 if runs:
                     log = s.cards_path / slug / runs[-1]["name"]
@@ -314,5 +332,8 @@ class Collector:
             except Exception as e2:
                 return {"status": "down", "error": redact(str(e2)), "agents": agents, "messages": [],
                         "threads": threads([], slugs), "identity": ident}
+        keep = set(self.s.agent_mail_projects)
+        msgs = [m for m in msgs if str(m.get("thread") or "").startswith("card-") or not m.get("project")
+                or m.get("project") in keep]
         return {"status": "ok", "error": None, "agents": agents, "messages": msgs[-200:], "source": source,
                 "threads": threads(msgs, slugs), "identity": ident}

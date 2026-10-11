@@ -50,6 +50,7 @@ class AgentMail:
         self.sid: str | None = None
         self._inited = False
         self._id = 0
+        self.timeout = 4.0
         u = urllib.parse.urlsplit(url)
         self.base = f"{u.scheme}://{u.netloc}"
 
@@ -66,7 +67,7 @@ class AgentMail:
         if self.sid:
             h["mcp-session-id"] = self.sid
         req = urllib.request.Request(self.url, json.dumps(body).encode(), h)
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:
             self.sid = r.headers.get("mcp-session-id") or self.sid
             text = r.read().decode()
         if not text.strip():
@@ -114,7 +115,7 @@ class AgentMail:
         h = {"Accept": "application/json"}
         if self.token:
             h["Authorization"] = "Bearer " + self.token
-        with urllib.request.urlopen(urllib.request.Request(url, headers=h, method="GET"), timeout=8) as r:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=h, method="GET"), timeout=self.timeout) as r:
             return json.loads(r.read().decode() or "null")
 
     def unified(self, limit: int = 300) -> list[dict]:
