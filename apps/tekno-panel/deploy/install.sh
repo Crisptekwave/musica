@@ -39,8 +39,15 @@ fi
 
 sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-panel.service" > "$UNIT_DIR/tekno-panel.service"
 sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-control-helper.service" > "$UNIT_DIR/tekno-control-helper.service"
+# team chat (approved by the owner): team-mail CLI + alert relay (new panel alerts -> agent-mail thread panel-errors)
+AM="$HOME/.config/agent-mail"; mkdir -p "$AM" "$HOME/.local/bin"; chmod 700 "$AM"
+install -m 755 "$APP_DIR/tools/team_mail.py" "$APP_DIR/tools/alert_relay.py" "$AM/"
+ln -sf "$AM/team_mail.py" "$HOME/.local/bin/team-mail"
+cp "$APP_DIR/deploy/tekno-alert-relay.service" "$APP_DIR/deploy/tekno-alert-relay.timer" "$UNIT_DIR/"
 systemctl --user daemon-reload
 systemctl --user enable tekno-control-helper.service tekno-panel.service >/dev/null
+# the relay needs the agent identities (identities.json) set up first
+[ -f "$AM/identities.json" ] && systemctl --user enable --now tekno-alert-relay.timer >/dev/null
 systemctl --user restart tekno-control-helper.service tekno-panel.service
 sleep 2
 systemctl --user --no-pager --lines=5 status tekno-panel.service || true

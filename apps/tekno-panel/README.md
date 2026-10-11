@@ -104,12 +104,11 @@ The lane profiles have the raw agent-mail MCP switched off: lane workers run wit
 and with the MCP tools available they tried to register identities themselves. `team-mail` finds its
 identities next to its own install, so it works under any `HOME`.
 
-**Alert relay (optional).** `tools/alert_relay.py` posts new warn/crit panel alerts and failed control
+**Alert relay.** `tools/alert_relay.py` posts new warn/crit panel alerts and failed control
 actions to thread `panel-errors` as `Tekno-Panel`: each problem once, and again only if it is still open
 after 12 h. It reads the panel's history DB read-only, so the panel itself still never writes to
-agent-mail. To run it every 2 minutes, copy `deploy/tekno-alert-relay.{service,timer}` to
-`~/.config/systemd/user/`, put `alert_relay.py` next to `team_mail.py` in `~/.config/agent-mail/`, and
-`systemctl --user enable --now tekno-alert-relay.timer`. The first run only remembers what is open.
+agent-mail. `deploy/install.sh` installs it with `team-mail` and enables `tekno-alert-relay.timer` (every
+2 minutes) once `identities.json` exists. The first run only remembers what is already open.
 
 ## Controls (approved by the owner)
 
