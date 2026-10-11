@@ -1,0 +1,15 @@
+[Unit]
+Description=TEKNO CONTROL REAPER frame grabber (Studio page; idle unless the page is open)
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/tekno-panel/env
+ExecStart=/usr/bin/python3 %h/.config/agent-mail/reaper_snap.py
+Restart=always
+RestartSec=5
+Nice=15
+NoNewPrivileges=yes
+UMask=0022
+
+[Install]
+WantedBy=default.target

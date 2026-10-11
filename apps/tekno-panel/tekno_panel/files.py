@@ -126,6 +126,30 @@ def plan_summary(card: Path) -> dict | None:
     return None
 
 
+MODELS = ("sonnet", "opus", "fable")
+
+
+def _label(x, n: int = 40) -> str | None:
+    s = " ".join(str(x).split())[:n] if isinstance(x, (str, int, float)) and not isinstance(x, bool) else ""
+    return s or None
+
+
+def brief_summary(card: Path) -> dict | None:
+    """study/brief.json conventions: "style" (+ "styles"), and optionally "model" (sonnet|opus|fable) and "agent"
+    (a label) written by the agent that builds the card. Nothing is shown for fields that aren't there."""
+    b = read_json(card / "study" / "brief.json")
+    if not isinstance(b, dict):
+        return None
+    styles = [s for s in (_label(x, 24) for x in (b.get("styles") if isinstance(b.get("styles"), list) else [])) if s]
+    style = _label(b.get("style"), 24)
+    if style and style not in styles:
+        styles.insert(0, style)
+    model = str(b.get("model") or "").strip().lower()
+    out = {"style": style or (styles[0] if styles else None), "styles": styles[:6],
+           "model": model if model in MODELS else None, "agent": _label(b.get("agent"))}
+    return out if any(out.values()) else None
+
+
 def stage_reports(card: Path) -> dict:
     """Small summaries of each lane's report.json (the numbers the lanes print)."""
     out = {}
@@ -499,7 +523,7 @@ def scan(cards_dir: Path, handoff_dir: Path | None = None, max_cards: int = 40) 
             lanes[c.name] = files_lane(c)
             masters = [c / "polish" / n for n in ("master.wav", "master.flac")]
             info[c.name] = {
-                "plan": plan_summary(c), "reports": stage_reports(c), "runs": run_logs(c), "mtime": card_mtime(c),
+                "plan": plan_summary(c), "brief": brief_summary(c), "reports": stage_reports(c), "runs": run_logs(c), "mtime": card_mtime(c),
                 "attempts": len(hist), "handoff": [],
                 "master_mtime": max((m.stat().st_mtime for m in masters if m.exists()), default=None),
             }

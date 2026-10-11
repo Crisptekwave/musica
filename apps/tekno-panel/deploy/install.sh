@@ -41,8 +41,18 @@ sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-panel.service" > "$UNIT_DIR/
 sed "s|@APP_DIR@|$APP_DIR|g" "$APP_DIR/deploy/tekno-control-helper.service" > "$UNIT_DIR/tekno-control-helper.service"
 # team chat (approved by the owner): team-mail CLI + alert relay (new panel alerts -> agent-mail thread panel-errors)
 AM="$HOME/.config/agent-mail"; mkdir -p "$AM" "$HOME/.local/bin"; chmod 700 "$AM"
-install -m 755 "$APP_DIR/tools/team_mail.py" "$APP_DIR/tools/alert_relay.py" "$APP_DIR/tools/fallback_watchdog.py" "$AM/"
+install -m 755 "$APP_DIR/tools/team_mail.py" "$APP_DIR/tools/alert_relay.py" "$APP_DIR/tools/fallback_watchdog.py" \
+  "$APP_DIR/tools/agent_status.py" "$APP_DIR/tools/reaper_snap.py" "$AM/"
 ln -sf "$AM/team_mail.py" "$HOME/.local/bin/team-mail"
+ln -sf "$AM/agent_status.py" "$HOME/.local/bin/tekno-agent"
+# agent status files (tekno-agent): a group-writable setgid folder like the card folders, so every agent can write
+AG="${TEKNO_AGENTS_DIR:-/mnt/agent-data/tekno_machine/agents}"
+if [ -d "$(dirname "$AG")" ] && [ ! -d "$AG" ]; then
+  sudo -n -u "${TEKNO_ACE_USER:-Gebruiker}" bash -c 'mkdir -p "$1" && chgrp "$(stat -c %G "$(dirname "$1")")" "$1" && chmod 2775 "$1"' _ "$AG" \
+    || mkdir -p "$AG"
+fi
+# live REAPER view (Studio page): frame grabber, only works while the Studio page is open
+cp "$APP_DIR/deploy/tekno-reaper-snap.service" "$UNIT_DIR/"
 cp "$APP_DIR/deploy/tekno-alert-relay.service" "$APP_DIR/deploy/tekno-alert-relay.timer" "$UNIT_DIR/"
 # Claude-limit fallback (approved by the owner: allowlist tools only, stock Qwen3-Coder on the local vLLM)
 FB="${TEKNO_FALLBACK_DIR:-/mnt/agent-data/tekno_machine/fallback}"
@@ -54,6 +64,7 @@ if [ -d "$(dirname "$FB")" ]; then
 fi
 systemctl --user daemon-reload
 systemctl --user enable tekno-control-helper.service tekno-panel.service >/dev/null
+command -v ffmpeg >/dev/null && systemctl --user enable --now tekno-reaper-snap.service >/dev/null || echo "ffmpeg missing: Studio frames are off"
 # the relay needs the agent identities (identities.json) set up first
 [ -f "$AM/identities.json" ] && systemctl --user enable --now tekno-alert-relay.timer >/dev/null
 [ -f "$UNIT_DIR/tekno-fallback.timer" ] && grep -q '"qwen"' "$AM/identities.json" 2>/dev/null \

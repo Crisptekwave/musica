@@ -4,7 +4,7 @@ The web panel runs with NoNewPrivileges and can't use sudo. This helper is a sep
 network port: it listens on a unix socket (mode 600, same user only, checked with SO_PEERCRED) and accepts
 one JSON request per connection: ``{"action": ..., "params": {...}}``. It never takes a command line from
 the panel: it re-validates the action against the same allowlist (:class:`tekno_panel.control.Controller`),
-re-reads the live process table itself, builds the fixed argv and runs it. Only the sudo-backed actions are
+re-reads the live process table itself, builds the fixed argv and runs it. Only the sudo-backed actions (and the fallback MODE write) are
 served here; passcode checks, rate limits and the audit log stay in the panel.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from . import procs
 from .config import load_settings
 from .control import ActionError, Controller
 
-HELPER_ACTIONS = {"lane.run", "lane.stop", "service.restart"}
+HELPER_ACTIONS = {"lane.run", "lane.stop", "service.restart", "fallback.mode"}
 
 
 def socket_path() -> Path:
@@ -38,6 +38,9 @@ def handle(ctrl: Controller, req: dict, scan=procs.scan) -> dict:
         argv, _summary, _detached = ctrl._plan(name, params, scan(ctrl.s.proc_root))
     except ActionError as e:
         return {"code": 125, "out": "", "err": str(e)}
+    if name == "fallback.mode":  # no sudo: the helper itself writes the MODE file (group-writable)
+        code, out, err = ctrl.set_fallback_mode(argv[1])
+        return {"code": code, "out": out, "err": err}
     if not argv or argv[0] != "sudo":
         return {"code": 126, "out": "", "err": "unexpected plan"}
     try:

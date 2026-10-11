@@ -1,0 +1,48 @@
+<REAPER_PROJECT 0.1 "7.82/linux-x86_64" 1791736787 0
+  RIPPLE 0 0
+  RENDER_FILE "/mnt/agent-data/tekno_machine/cards/sk-0930/mix//premaster.wav"
+  SAMPLERATE 48000 1 0
+  <RENDER_CFG
+    ZXZhdxgAAQ==
+  >
+  TEMPO 167 4 4 0
+  <TRACK {874AD623-196B-6A22-4914-4C0825FC108B}
+    NAME KICK
+    VOLPAN 1 0 -1 -1 1
+    <FXCHAIN
+      SHOW 0
+      <VST "VST3: ReaEQ" reaeq.vst3 0 "" 1919
+        AAAA
+      >
+    >
+    <ITEM
+      POSITION 0
+      LENGTH 0.5
+      NAME ""
+      <SOURCE WAVE
+        FILE "/mnt/agent-data/music_library/kick.wav"
+      >
+    >
+    <ITEM
+      POSITION 0.5
+      LENGTH 0.5
+      <SOURCE WAVE
+        FILE "/mnt/agent-data/music_library/kick.wav"
+      >
+    >
+  >
+  <TRACK {AAAAAAAA-196B-6A22-4914-4C0825FC108B}
+    NAME "Acid 303 lead"
+    <ITEM
+      POSITION 12.25
+      LENGTH 3.5
+      NAME "riff"
+      <SOURCE MIDI
+        E 480 90 3c 60
+      >
+    >
+  >
+  <TRACK {BBBBBBBB-196B-6A22-4914-4C0825FC108B}
+    VOLPAN 1 0 -1 -1 1
+  >
+>

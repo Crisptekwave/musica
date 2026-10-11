@@ -60,7 +60,7 @@ def gpu_apps(proc_root: Path = Path("/proc")) -> list[dict]:
             argv = (proc_root / parts[0] / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
         except OSError:
             argv = ""
-        label = "ACE-Step" if "acestep" in argv else (Path(argv.split()[0]).name if argv.strip() else f"pid {parts[0]}")
+        label = "ACE-Step" if "acestep" in argv else "vLLM" if "vllm" in argv else (Path(argv.split()[0]).name if argv.strip() else f"pid {parts[0]}")
         try:
             mem = float(parts[1])
         except ValueError:

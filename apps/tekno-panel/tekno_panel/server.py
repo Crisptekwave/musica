@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import demo, procs, review
+from . import demo, palette, procs, review, studio
 from .control import ActionError
 from .auth import COOKIE, SESSION_TTL, Auth
 from .config import Settings, load_settings
@@ -67,7 +67,7 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "no-referrer"
-        if request.url.path.startswith(("/api/", "/media")):
+        if request.url.path.startswith(("/api/", "/media", "/palette/media", "/reaper/")):
             resp.headers.setdefault("Cache-Control", "no-store")
         return resp
 
@@ -205,6 +205,32 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
         need_auth(request)
         return Response(dumps(await asyncio.to_thread(collector.history.series, range)), media_type="application/json")
 
+    # ---------- studio (view-only live REAPER frames) ----------
+    @app.get("/api/reaper")
+    async def reaper(request: Request):
+        need_auth(request)
+        await asyncio.to_thread(studio.touch_viewing, s.data_dir)  # wakes the frame grabber (it idles otherwise)
+        data = await asyncio.to_thread(studio.instances, s.data_dir, s.cards_path)
+        tracks = {t["slug"]: t for t in collector.get().get("tracks") or []}
+        for i in data["instances"]:
+            t = tracks.get(i["slug"])
+            i["card"] = {k: t.get(k) for k in ("lane", "state", "progress")} if t else None
+        return Response(dumps(data), media_type="application/json")
+
+    @app.get("/reaper/frame/{display}.jpg")
+    async def reaper_frame(display: str, request: Request):
+        need_auth(request)
+        p = studio.frame_path(s.data_dir, display)
+        if p is None or not p.is_file():
+            raise HTTPException(404, "no frame")
+        return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    # ---------- palette ----------
+    @app.get("/api/palette")
+    async def palette_index(request: Request):
+        need_auth(request)
+        return Response(dumps(await asyncio.to_thread(palette.load, s.palette_dir)), media_type="application/json")
+
     # ---------- media ----------
     def safe_file(root: Path, rel: str, exts=AUDIO_EXT) -> Path:
         root = root.resolve()
@@ -220,6 +246,12 @@ def create_app(settings: Settings | None = None, start_collector: bool = True, r
             raise HTTPException(404, "not found")
         p = safe_file(s.cards_path, f"{card}/{path}")
         return FileResponse(p, headers={"Cache-Control": "private, max-age=60"})
+
+    @app.get("/palette/media/{path:path}")
+    async def palette_media(path: str, request: Request):
+        need_auth(request)
+        p = safe_file(s.palette_dir, path)  # inside the palette folder, audio extensions only
+        return FileResponse(p, headers={"Cache-Control": "private, max-age=300"})
 
     @app.get("/handoff/{project}/{path:path}")
     async def handoff_media(project: str, path: str, request: Request):
