@@ -1,0 +1,18 @@
+--- /mnt/agent-data/tekno_machine/scripts/fair.py (backup: fair.py.bak-phase)
++++ /mnt/agent-data/tekno_machine/scripts/fair.py
+@@ -6,8 +6,13 @@
+     else: x,sr=sf.read(f); x=x.mean(1)
+     return x,sr
+ def phase(x,sr):
+-    l=ss.sosfiltfilt(ss.butter(4,[40,150],'band',fs=sr,output='sos'),x); env=uniform_filter1d(np.abs(l),int(0.005*sr)); on=np.maximum(np.diff(env,prepend=env[0]),0)
+-    n=len(on)//int(P*sr)-2; idx=(np.arange(n)[:,None]*P*sr+np.arange(int(P*sr))[None,:]).astype(int); f=on[idx].sum(0); return np.argmax(uniform_filter1d(f,int(0.002*sr)))/sr-0.002
++    # grid = leading edge (50 % rise) of the beat-folded 40-150 Hz Hilbert envelope. The old argmax of d/dt |x|*5ms locked onto
++    # the 2*f0 ripple of a long LF kick body (e2e-001 stub kick: +36 ms late -> windows straddled the NEXT kick, knock -12 dB)
++    l=ss.sosfiltfilt(ss.butter(4,[40,150],'band',fs=sr,output='sos'),x); env=np.abs(ss.hilbert(l))
++    n=len(env)//int(P*sr)-2; idx=(np.arange(n)[:,None]*P*sr+np.arange(int(P*sr))[None,:]).astype(int); f=uniform_filter1d(env[idx].mean(0),int(0.001*sr))
++    i=int(np.argmax(f)); thr=f.min()+0.5*(f[i]-f.min()); j=i
++    while f[j%len(f)]>=thr and i-j<int(0.08*sr): j-=1
++    return (j%len(f))/sr
+ def run(f,secs,t0=None):
+     x,sr=load(f); t0=phase(x,sr) if t0 is None else t0
+     bl=lambda lo,hi: ss.sosfiltfilt(ss.butter(4,[lo,hi],'band',fs=sr,output='sos'),x)

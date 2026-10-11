@@ -1,0 +1,8 @@
+--- /mnt/agent-data/ace-step/qc_gate.py (backup: qc_gate.py.bak-acfwin)
++++ /mnt/agent-data/ace-step/qc_gate.py
+@@ -27 +27,4 @@
+-        for b in np.arange(bpm_target - 5, bpm_target + 5, 0.005):
++        # search less than one beat around the lag: at 64 beats +-5 BPM also covers 63/65 beats, and with a kick on
++        # every beat those score about the same (165 BPM read as 167.6). Real drift still shows in the 4/16 lags.
++        half = min(5.0, 0.45 * bpm_target / nb)
++        for b in np.arange(bpm_target - half, bpm_target + half, 0.005):
