@@ -115,7 +115,7 @@
     const errs = Object.entries(snap.sources || {}).filter(([k, v]) => v && v.ok === false && k !== "mail").map(([k, v]) => `${k}: ${v.error}`);
     const ban = $("#banner"); ban.textContent = errs.join(" · "); ban.classList.toggle("hidden", !errs.length);
     renderPipeline(snap);
-    bots.update(snap.lanes || {});
+    renderBots(snap.agents || []);
     if (S.screen === "listen") renderListen(snap); else trackNewAudio(snap);
     if (S.screen === "scores") renderScores(snap);
     pushGpu(snap);
@@ -285,13 +285,27 @@
   }
   function closeSheet() { $("#sheet").classList.remove("open"); $("#sheet-backdrop").classList.add("hidden"); }
 
-  function botSheet(lane, L) {
+  // Bots tab: one creature per agent in the roster (tekno-agent status files), not the retired pipeline lanes.
+  function renderBots(agents) {
+    const list = agents.slice(0, 12), byName = {};
+    for (const a of list) {
+      const state = a.state === "failed" ? "failed" : a.state !== "working" ? "idle" : a.stale ? "waiting" : "working";
+      byName[a.name] = { state, label: a.stale ? "no update" : a.state, agent: a };
+    }
+    bots.setNames(list.map(a => a.name));
+    bots.update(byName);
+    $("#bots-empty").classList.toggle("hidden", list.length > 0);
+  }
+
+  function agentSheet(name, L) {
+    const a = L.agent;
+    if (!a) return;
     const col = { working: "var(--acid)", failed: "var(--red)", waiting: "var(--uv-hot)", idle: "var(--muted)" }[L.state] || "var(--muted)";
-    const log = (L.log || []).map(x => `${x.at ? new Date(x.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}  ${x.text}`).join("\n");
-    openSheet(`<h2>${esc(lane)} bot</h2><span class="state-tag" style="color:${col}">${esc(L.state === "idle" ? "sleeping" : L.state)}</span>
-      <h3>Current task</h3><p>${L.task ? `<span class="mono">${esc(L.task.title)}</span><br><small class="muted">${esc(L.task.id || "")} ${L.task.assignee ? "· " + esc(L.task.assignee) : ""}${L.task.via ? ` · seen via ${esc(L.task.via)}` : ""}${L.task.since ? ` · ${Live.dur(Date.now() / 1000 - L.task.since)}` : ""}</small>${L.task.error ? `<br><span class="warn-text">${esc(L.task.error)}</span>` : ""}` : `<span class="muted">No card in this lane right now.</span>`}</p>
-      ${L.handoff_to ? `<p class="muted">Last hand-off → <b style="color:var(--acid)">${esc(L.handoff_to)}</b> ${ago(L.handoff_at)}</p>` : ""}
-      <h3>Last log lines</h3><div class="log">${esc(log || "nothing logged yet")}</div>`);
+    const hist = (a.history || []).slice().reverse().map(h => `${new Date(h.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}  ${h.step || ""}`).join("\n");
+    openSheet(`<h2>${esc(a.name)}</h2>${V3.modelChip(a.model)} <span class="state-tag" style="color:${col}">${esc(L.label)}</span>
+      <h3>Task</h3><p>${a.card ? `<span class="mono">${esc(a.card)}</span><br>` : ""}${esc(a.task || "–")}</p>
+      <h3>Now</h3><p>${esc(a.step || a.result || "–")}<br><small class="muted">updated ${ago(a.updated)}</small></p>
+      <h3>Steps</h3><div class="log">${esc(hist || "nothing reported yet")}</div>`);
   }
 
   // ---------------- listen ----------------
@@ -469,7 +483,7 @@
   }
 
   // ---------------- wiring ----------------
-  const bots = new Bots($("#bots-canvas"), (lane, L) => { haptic(12); botSheet(lane, L); });
+  const bots = new Bots($("#bots-canvas"), (name, L) => { haptic(12); agentSheet(name, L); });
   const player = new Player({
     a: $("#audio-a"), b: $("#audio-b"), spectrum: $("#spectrum"), scope: $("#scope"),
     meterL: $("#meter-l"), meterR: $("#meter-r"), meterDb: $("#meter-db"),
