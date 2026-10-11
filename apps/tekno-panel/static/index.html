@@ -36,6 +36,7 @@
     <header class="topbar">
       <div class="logo"><span class="logo-a">TEKNO</span><span class="logo-b">CONTROL</span></div>
       <div class="top-right">
+        <button class="bell-m hidden" id="bell-m" aria-label="Alerts"></button>
         <span class="upd mono" id="upd" title="Last update from the machine"></span>
         <button class="chip mode-chip" id="mode-chip" title="Switch live / demo">LIVE</button>
         <span class="live-dot" id="live-dot" title="connection"></span>
@@ -106,8 +107,10 @@
       </section>
 
       <section class="screen" id="s-chat" data-title="Chat">
+        <div class="feed-tabs" id="feed-tabs"><button data-f="mail" aria-pressed="true">Mail</button><button data-f="activity" aria-pressed="false">Activity</button></div>
         <div class="filter-row" id="thread-row"></div>
         <div class="chat" id="chat"></div>
+        <div class="glass timeline hidden" id="act-m"></div>
       </section>
     </main>
 

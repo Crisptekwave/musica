@@ -119,6 +119,38 @@
     pushGpu(snap);
     if (S.screen === "health") renderHealth(snap);
     renderChat(snap);
+    renderBellM(snap);
+  }
+
+  // ---------------- alerts (top bar) ----------------
+  function renderBellM(snap) {
+    const al = snap.alerts || [], b = $("#bell-m");
+    b.textContent = al.length ? `! ${al.length}` : "";
+    b.classList.toggle("hidden", !al.length);
+    b.classList.toggle("crit", al.some(a => a.level === "crit"));
+  }
+  function alertsSheet() {
+    const al = S.snap?.alerts || [];
+    haptic(8);
+    openSheet(`<h2>Alerts</h2><p class="muted">Live problems, worst first. They clear by themselves when fixed.</p>` +
+      (al.length ? al.map(a => `<div class="al-row ${esc(a.level)}"><i></i><div><b>${esc(a.title)}</b>${a.detail ? `<div class="d">${esc(a.detail)}</div>` : ""}<div class="d">${esc(ago(a.since))}</div></div></div>`).join("")
+        : `<p>All clear.</p>`));
+  }
+
+  // ---------------- activity feed (Chat tab) ----------------
+  const KIND_M = { run: "run", kanban: "board", render: "render", ace: "ACE", service: "service", mail: "mail", alert: "alert", action: "you" };
+  function renderActivityM(snap) {
+    const list = snap.activity || [];
+    const box = $("#act-m"), key = list.map(e => e.id).join("|");
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    let day = "", html = "";
+    for (const e of list) {
+      const d = new Date(e.ts * 1000).toDateString();
+      if (d !== day) { day = d; html += `<div class="tl-day">${esc(d === new Date().toDateString() ? "Today" : new Date(e.ts * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}</div>`; }
+      html += `<div class="tl-row ${esc(e.level)}"><time>${esc(Live.hm(e.ts))}</time><div class="tl-text"><span class="k">${esc(KIND_M[e.kind] || e.kind)}</span>${e.card ? `<b>${esc(e.card)}</b> · ` : ""}${esc(e.text)}</div></div>`;
+    }
+    box.innerHTML = html || `<p class="muted">Nothing recorded yet.</p>`;
   }
 
   // Time of the last snapshot the machine pushed; turns amber when it stops ticking.
@@ -382,6 +414,9 @@
 
   function renderChat(snap) {
     const c = snap.chat || {}, msgs = c.messages || [];
+    const act = S.feed === "activity";
+    $("#chat").classList.toggle("hidden", act); $("#thread-row").classList.toggle("hidden", act); $("#act-m").classList.toggle("hidden", !act);
+    if (act && S.screen === "chat") return renderActivityM(snap);
     if (S.screen !== "chat" && msgs.length > S.seenMsgs && S.seenMsgs) $("#chat-dot").classList.remove("hidden");
     if (!S.seenMsgs && msgs.length && S.screen !== "chat") S.seenMsgs = msgs.length;
     if (S.screen !== "chat") return;
@@ -458,6 +493,12 @@
     $("#listen-cards").addEventListener("click", e => { const b = e.target.closest("[data-card]"); if (!b) return; S.listenCard = b.dataset.card || null; renderListen(S.snap); });
     $("#score-cards").addEventListener("click", e => { const b = e.target.closest("[data-score]"); if (!b) return; haptic(5); S.scoreCard = b.dataset.score; renderScores(S.snap); });
     $("#thread-row").addEventListener("click", e => { const b = e.target.closest("[data-thread]"); if (!b) return; S.thread = b.dataset.thread || null; renderChat(S.snap); });
+    $("#bell-m").addEventListener("click", alertsSheet);
+    $("#feed-tabs").addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return; haptic(5); S.feed = b.dataset.f;
+      document.querySelectorAll("#feed-tabs button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      $("#chat").dataset.key = ""; if (S.snap) renderChat(S.snap);
+    });
     $("#logout-btn").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.reload(); });
     setInterval(() => {
       const el = player.active();

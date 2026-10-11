@@ -68,7 +68,7 @@
     const g = snap.health?.gpu;
     if (g && g.ok && snap.ts !== S.lastGpuTs) { S.lastGpuTs = snap.ts; S.gpuHist.push(g.util || 0); if (S.gpuHist.length > 160) S.gpuHist.shift(); }
     renderKpis(snap); renderBoard(snap); bots.update(snap.lanes || {}); renderListen(snap);
-    renderScores(snap); renderHealth(snap); renderChat(snap); renderDrawer();
+    renderScores(snap); renderHealth(snap); renderChat(snap); renderDrawer(); renderPage(snap);
   }
 
   // Time of the last snapshot the machine pushed; turns amber when it stops ticking.
@@ -505,6 +505,206 @@
     connect();
   }
 
-  wire(); boot();
+  // ================= SaaS shell: pages, alerts, command palette =================
+  const PAGES = ["overview", "tracks", "activity", "machine", "alerts"];
+  Object.assign(S, { page: "overview", range: store.get("tekno-range", "1h"), actKind: "", actQ: "", actRows: null, actOlder: [],
+    sort: { k: "last_activity", dir: -1 }, tracksQ: "", metrics: null, metricsAt: 0, cmdSel: 0 });
+  const KIND_LABEL = { run: "run", kanban: "board", render: "render", ace: "ACE", service: "service", mail: "mail", alert: "alert", action: "you" };
+  const dayName = ts => { const d = new Date(ts * 1000), t = new Date(); const y = new Date(t); y.setDate(t.getDate() - 1);
+    return d.toDateString() === t.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" }); };
+
+  function route() {
+    const m = location.hash.match(/^#\/(\w+)(?:\/([\w.-]+))?/) || [];
+    S.page = PAGES.includes(m[1]) ? m[1] : "overview";
+    document.querySelectorAll(".page").forEach(el => el.classList.toggle("hidden", el.id !== "page-" + S.page));
+    document.querySelectorAll(".dk-rail a[data-page]").forEach(a => a.classList.toggle("active", a.dataset.page === S.page));
+    if (S.page === "overview") { bots.start(); requestAnimationFrame(() => bots.layout()); } else bots.stop();
+    if (m[1] === "tracks" && m[2]) openDrawer({ slug: m[2] });
+    $("#dk-main").scrollTop = 0;
+    if (S.page === "machine") loadMetrics(true);
+    if (S.page === "activity") loadActivity();
+    if (S.snap) renderPage(S.snap);
+  }
+  function go(page) { location.hash = "#/" + page; }
+
+  function renderPage(snap) {
+    renderBell(snap);
+    if (S.page === "tracks") renderTracksPage(snap);
+    else if (S.page === "activity") renderActivity(snap);
+    else if (S.page === "machine") { renderMachinePage(snap); if (Date.now() - S.metricsAt > 15000) loadMetrics(); }
+    else if (S.page === "alerts") renderAlerts(snap);
+  }
+
+  // ---- alerts + bell
+  function alertHtml(a) {
+    return `<div class="glass alert-card ${esc(a.level)}"><i></i><div><div class="t">${esc(a.title)}</div>${a.detail ? `<div class="d">${esc(a.detail)}</div>` : ""}
+      ${a.card ? `<div class="d">track <b class="link" data-open="${esc(a.card)}">${esc(a.card)}</b></div>` : ""}</div><time>${esc(Live.ago(a.since))}</time></div>`;
+  }
+  function renderBell(snap) {
+    const al = snap.alerts || [], bad = al.filter(a => a.level !== "info");
+    const c = $("#bell-count"), r = $("#rail-alerts");
+    c.textContent = r.textContent = al.length;
+    c.classList.toggle("hidden", !al.length); r.classList.toggle("hidden", !bad.length);
+    c.classList.toggle("warn", !al.some(a => a.level === "crit"));
+    if (!$("#bell-pop").classList.contains("hidden")) $("#bell-pop").innerHTML = bellHtml(al);
+  }
+  function bellHtml(al) {
+    return `<div class="page-head" style="margin:2px 4px 8px"><b>Alerts</b><a href="#/alerts" class="muted" style="font-size:12px">open all →</a></div>` +
+      (al.length ? al.slice(0, 6).map(alertHtml).join("") : `<div class="empty-state"><b>✓</b>All clear</div>`);
+  }
+  function renderAlerts(snap) {
+    const al = snap.alerts || [];
+    const key = JSON.stringify(al.map(a => [a.key, a.detail]));
+    if ($("#alerts-list").dataset.key === key) return;
+    $("#alerts-list").dataset.key = key;
+    $("#alerts-list").innerHTML = al.length ? al.map(alertHtml).join("") : `<div class="glass empty-state"><b>✓</b>No alerts. Disk, services, sources, GPU, ACE and tracks all look fine.</div>`;
+  }
+
+  // ---- tracks table
+  function trackRow(t) {
+    const sc = (S.snap.scores || []).find(x => x.card === t.slug);
+    return { t, slug: t.slug, lane: t.lane, state: t.state, progress: Number(t.progress) || 0, loops: t.loops || 0, runs: (t.runs || []).length,
+      verdict: sc ? sc.verdict + (sc.metrics?.draft != null ? " " + Live.num(sc.metrics.draft) : "") : "",
+      plan: t.plan ? [t.plan.bpm ? Number(t.plan.bpm) + " BPM" : "", t.plan.key].filter(Boolean).join(" · ") : "", last_activity: t.last_activity || 0 };
+  }
+  function renderTracksPage(snap) {
+    const q = S.tracksQ;
+    let rows = (snap.tracks || []).map(trackRow).filter(r => !q || [r.slug, r.lane, r.state, r.plan].join(" ").toLowerCase().includes(q));
+    const { k, dir } = S.sort;
+    rows.sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * dir);
+    $("#tracks-sub").textContent = `${(snap.tracks || []).length} tracks on the board and on disk · click a row for everything about it`;
+    document.querySelectorAll("#tracks-table th").forEach(th => th.classList.toggle("sorted", th.dataset.k === k));
+    const key = JSON.stringify(rows.map(r => [r.slug, r.lane, r.state, r.progress, r.loops, r.runs, r.verdict, Math.round(r.last_activity / 30)]));
+    const body = $("#tracks-table tbody");
+    if (body.dataset.key === key) return;
+    body.dataset.key = key;
+    body.innerHTML = rows.length ? rows.map(r => `<tr data-open="${esc(r.slug)}"><td class="slug">${esc(r.slug)}${r.t.live ? ` <span class="pill sm working">live</span>` : ""}</td>
+      <td>${esc(r.lane)}</td><td><span class="pill sm ${esc(r.state)}">${esc(STATE_LABEL[r.state] || r.state)}</span></td>
+      <td><span class="mini-bar"><i style="width:${r.progress}%"></i></span> <span class="mono">${r.progress}%</span></td>
+      <td class="mono">${r.loops ? "↺ " + r.loops : "–"}</td><td class="mono">${r.runs || "–"}</td><td class="mono">${esc(r.verdict || "–")}</td>
+      <td class="mono">${esc(r.plan || "–")}</td><td class="muted">${esc(Live.ago(r.last_activity))}</td></tr>`).join("")
+      : `<tr><td colspan="9" class="empty-state">No tracks match.</td></tr>`;
+  }
+
+  // ---- activity timeline
+  async function loadActivity(older) {
+    const p = new URLSearchParams({ limit: "150" });
+    if (S.actKind) p.set("kind", S.actKind);
+    if (S.actQ) p.set("q", S.actQ);
+    const rows = older ? S.actOlder.concat(S.actRows || []) : null;
+    if (older) { const last = (S.actRows || S.snap?.activity || []).concat(S.actOlder).slice(-1)[0]; if (last) p.set("before", last.ts); }
+    const r = await fetch("/api/activity?" + p).then(x => x.ok ? x.json() : null).catch(() => null);
+    if (!r) return;
+    if (older) S.actOlder = S.actOlder.concat(r.events); else S.actRows = (S.actKind || S.actQ) ? r.events : null;
+    $("#act-list").dataset.key = "";
+    if (S.snap) renderActivity(S.snap);
+    return rows;
+  }
+  function renderActivity(snap) {
+    const kinds = ["", "run", "kanban", "render", "ace", "service", "mail", "alert"];
+    const kk = kinds.join() + S.actKind;
+    if ($("#act-kinds").dataset.key !== kk) {
+      $("#act-kinds").dataset.key = kk;
+      $("#act-kinds").innerHTML = kinds.map(k => `<button class="toggle" aria-pressed="${S.actKind === k}" data-kind="${k}">${k ? esc(KIND_LABEL[k] || k) : "All"}</button>`).join("");
+    }
+    const seen = new Set();
+    const list = (S.actRows || (snap.activity || [])).concat(S.actOlder).filter(e => !seen.has(e.id) && seen.add(e.id));
+    const key = list.map(e => e.id).join("|");
+    const box = $("#act-list");
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    let day = "", html = "";
+    for (const e of list) {
+      const d = dayName(e.ts);
+      if (d !== day) { day = d; html += `<div class="tl-day">${esc(d)}</div>`; }
+      html += `<div class="tl-row ${esc(e.level)}"><time>${esc(Live.hm(e.ts))}</time><span class="tl-kind ${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span>
+        <span class="tl-text">${e.card ? `<b data-open="${esc(e.card)}">${esc(e.card)}</b> · ` : ""}${esc(e.text)}</span></div>`;
+    }
+    box.innerHTML = html || `<div class="empty-state"><b>∅</b>Nothing recorded yet.</div>`;
+  }
+
+  // ---- machine page: history charts
+  const METRIC_DEFS = [
+    { k: "gpu_util", label: "GPU util", unit: "%", max: 100 }, { k: "gpu_temp", label: "GPU temp", unit: "°C", line: 85 },
+    { k: "vram_used", label: "VRAM used", unit: "GB", scale: 1 / 1024 }, { k: "disk_free", label: "Disk free", unit: "GB", line: 20 },
+    { k: "load1", label: "CPU load (1m)", unit: "" }, { k: "working", label: "Lanes working", unit: "" },
+  ];
+  async function loadMetrics(force) {
+    if (!force && Date.now() - S.metricsAt < 15000) return;
+    S.metricsAt = Date.now();
+    const r = await fetch(`/api/metrics?range=${encodeURIComponent(S.range)}`).then(x => x.ok ? x.json() : null).catch(() => null);
+    if (r) { S.metrics = r; drawMetrics(); }
+  }
+  function drawMetrics() {
+    const m = S.metrics; if (!m) return;
+    const grid = $("#metric-grid");
+    if (!grid.children.length) grid.innerHTML = METRIC_DEFS.map(d => `<div class="glass metric"><div class="m-head"><span>${esc(d.label)}</span><b id="mv-${d.k}">–</b></div><canvas id="mc-${d.k}" height="110"></canvas></div>`).join("");
+    for (const d of METRIC_DEFS) {
+      const vals = (m[d.k] || []).map(v => v == null ? null : +(v * (d.scale || 1)).toFixed(2));
+      const last = [...vals].reverse().find(v => v != null);
+      $("#mv-" + d.k).textContent = last == null ? "–" : `${last}${d.unit}`;
+      const has = vals.some(v => v != null);
+      Charts.lines($("#mc-" + d.k), has ? [{ values: vals, color: Charts.ACID, label: d.label }] : [], has && d.line != null ? { line: d.line } : {});
+    }
+    $("#machine-sub").textContent = `${m.t.length} points · one per ${m.bucket >= 3600 ? m.bucket / 3600 + " h" : m.bucket >= 60 ? m.bucket / 60 + " min" : m.bucket + " s"} · sampled by the panel every 15 s, kept 14 days`;
+  }
+  function renderMachinePage(snap) {
+    const h = snap.health || {};
+    $("#m-svc").innerHTML = (h.services || []).map(s => `<div class="svc-row"><span class="sd ${esc(s.status)}"></span><b>${esc(s.name)}</b><span class="via">${esc(s.status)} · ${esc(s.via)}</span></div>`).join("");
+    $("#m-src").innerHTML = Live.freshnessHtml(snap);
+    $("#m-ace").innerHTML = Live.aceHtml(h.ace) + Live.gpuAppsHtml(h.gpu) + Live.journalHtml(h.journal) + `<h3 style="margin-top:14px">Running now</h3>` + Live.procsHtml(snap.processes);
+  }
+
+  // ---- command palette
+  function cmdItems() {
+    const snap = S.snap || {};
+    const items = PAGES.map(p => ({ k: "page", label: p[0].toUpperCase() + p.slice(1), sub: "go to page", run: () => go(p) }));
+    (snap.tracks || []).forEach(t => items.push({ k: "track", label: t.slug, sub: `${t.lane} · ${STATE_LABEL[t.state] || t.state}`, run: () => { go("overview"); openDrawer({ slug: t.slug }); } }));
+    (snap.audio || []).filter(a => a.kind === "render").slice(0, 40).forEach(a => items.push({ k: "render", label: `${a.card} · ${a.path.split("/").pop()}`, sub: `${a.stage} · ${Live.ago(a.mtime)}`, run: () => { go("overview"); loadTake(a, true); } }));
+    (snap.alerts || []).forEach(a => items.push({ k: "alert", label: a.title, sub: a.level, run: () => go("alerts") }));
+    items.push({ k: "action", label: "Toggle fullscreen", sub: "F", run: toggleFs }, { k: "action", label: "Phone view", sub: "▯", run: () => { location.href = "/?view=phone"; } });
+    return items;
+  }
+  function openCmd() { $("#cmdk").classList.remove("hidden"); $("#cmdk-input").value = ""; S.cmdSel = 0; drawCmd(); $("#cmdk-input").focus(); }
+  function closeCmd() { $("#cmdk").classList.add("hidden"); }
+  function drawCmd() {
+    const q = $("#cmdk-input").value.trim().toLowerCase();
+    S.cmdList = cmdItems().filter(i => !q || (i.label + " " + i.k + " " + i.sub).toLowerCase().includes(q)).slice(0, 40);
+    S.cmdSel = Math.min(S.cmdSel, Math.max(0, S.cmdList.length - 1));
+    $("#cmdk-list").innerHTML = S.cmdList.map((i, n) => `<div class="cmdk-item ${n === S.cmdSel ? "sel" : ""}" data-n="${n}" role="option"><span class="k">${esc(i.k)}</span><span>${esc(i.label)}</span><span class="s">${esc(i.sub || "")}</span></div>`).join("")
+      || `<div class="empty-state">No match</div>`;
+  }
+  function runCmd(n) { const i = (S.cmdList || [])[n]; if (i) { closeCmd(); i.run(); } }
+
+  function wireShell() {
+    window.addEventListener("hashchange", route);
+    $("#cmdk-btn").onclick = openCmd;
+    $("#cmdk").addEventListener("click", e => { const it = e.target.closest(".cmdk-item"); if (it) runCmd(+it.dataset.n); else if (e.target.id === "cmdk") closeCmd(); });
+    $("#cmdk-input").addEventListener("input", () => { S.cmdSel = 0; drawCmd(); });
+    $("#cmdk-input").addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); S.cmdSel = Math.min(S.cmdSel + 1, S.cmdList.length - 1); drawCmd(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); S.cmdSel = Math.max(0, S.cmdSel - 1); drawCmd(); }
+      else if (e.key === "Enter") { e.preventDefault(); runCmd(S.cmdSel); }
+      else if (e.key === "Escape") { e.preventDefault(); closeCmd(); }
+    });
+    document.addEventListener("keydown", e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !$("#dk-app").classList.contains("hidden")) { e.preventDefault(); $("#cmdk").classList.contains("hidden") ? openCmd() : closeCmd(); }
+    }, true);
+    $("#bell-btn").onclick = e => { e.stopPropagation(); const p = $("#bell-pop"); p.classList.toggle("hidden"); if (!p.classList.contains("hidden")) p.innerHTML = bellHtml(S.snap?.alerts || []); };
+    document.addEventListener("click", e => { if (!e.target.closest("#bell-pop")) $("#bell-pop").classList.add("hidden"); });
+    const openFrom = e => { const o = e.target.closest("[data-open]"); if (o) { $("#bell-pop").classList.add("hidden"); openDrawer({ slug: o.dataset.open }); } };
+    ["#tracks-table", "#act-list", "#alerts-list", "#bell-pop"].forEach(sel => $(sel).addEventListener("click", openFrom));
+    $("#tracks-table thead").addEventListener("click", e => { const th = e.target.closest("th"); if (!th) return; S.sort = { k: th.dataset.k, dir: S.sort.k === th.dataset.k ? -S.sort.dir : (th.dataset.k === "slug" ? 1 : -1) }; $("#tracks-table tbody").dataset.key = ""; renderTracksPage(S.snap); });
+    $("#tracks-q").addEventListener("input", e => { S.tracksQ = e.target.value.trim().toLowerCase(); if (S.snap) renderTracksPage(S.snap); });
+    $("#act-kinds").addEventListener("click", e => { const b = e.target.closest("[data-kind]"); if (!b) return; S.actKind = b.dataset.kind; S.actOlder = []; loadActivity(); $("#act-kinds").dataset.key = ""; });
+    let aq; $("#act-q").addEventListener("input", e => { clearTimeout(aq); aq = setTimeout(() => { S.actQ = e.target.value.trim(); S.actOlder = []; loadActivity(); }, 250); });
+    $("#act-more").onclick = () => loadActivity(true);
+    $("#range-tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.range = b.dataset.r; store.set("tekno-range", S.range);
+      document.querySelectorAll("#range-tabs button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); loadMetrics(true); });
+    document.querySelectorAll("#range-tabs button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.r === S.range)));
+    window.addEventListener("resize", () => { if (S.page === "machine") drawMetrics(); });
+  }
+
+  wire(); wireShell(); boot(); route();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();

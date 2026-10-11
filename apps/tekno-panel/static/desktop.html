@@ -27,11 +27,22 @@
     </form>
   </section>
 
-  <div id="dk-app" class="hidden">
+  <div id="dk-app" class="hidden dk-shell">
+    <nav class="dk-rail" id="rail" aria-label="Pages">
+      <a class="rail-logo" href="#/overview" title="TEKNO CONTROL">TK</a>
+      <a href="#/overview" data-page="overview" title="Overview"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"/></svg><span>Overview</span></a>
+      <a href="#/tracks" data-page="tracks" title="Tracks"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zM3 11h18v2H3zM3 17h12v2H3z"/></svg><span>Tracks</span></a>
+      <a href="#/activity" data-page="activity" title="Activity"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-7 4 14 3-7h6v2h-5l-4 9-4-14-2 5H2z"/></svg><span>Activity</span></a>
+      <a href="#/machine" data-page="machine" title="Machine"><svg viewBox="0 0 24 24"><path d="M4 4h16v10H4zM8 18h8v2H8zM11 14h2v4h-2z"/></svg><span>Machine</span></a>
+      <a href="#/alerts" data-page="alerts" title="Alerts"><svg viewBox="0 0 24 24"><path d="M12 2a6 6 0 0 0-6 6v4l-2 4h16l-2-4V8a6 6 0 0 0-6-6zM10 19a2 2 0 0 0 4 0z"/></svg><span>Alerts</span><b class="rail-badge hidden" id="rail-alerts"></b></a>
+    </nav>
+    <div class="dk-main" id="dk-main">
     <header class="dk-top">
       <div class="logo"><span class="logo-a">TEKNO</span><span class="logo-b">CONTROL</span></div>
+      <button class="cmdk-btn" id="cmdk-btn" title="Search and jump (Ctrl+K)">⌕ <span>Search tracks, pages, renders</span> <kbd>⌘K</kbd></button>
       <div class="kpis" id="kpis"></div>
       <div class="dk-top-right">
+        <button class="icon-btn bell" id="bell-btn" title="Alerts" aria-label="Alerts">🔔<b class="bell-count hidden" id="bell-count"></b></button>
         <span class="upd mono" id="upd" title="Last update from the machine"></span>
         <button class="chip mode-chip" id="mode-chip" title="Switch live / demo (D)">LIVE</button>
         <span class="live-dot" id="live-dot" title="connection"></span>
@@ -43,7 +54,7 @@
     </header>
     <div class="banner hidden" id="banner"></div>
 
-    <main class="dk-grid">
+    <main class="dk-grid page" id="page-overview">
       <section class="panel p-pipe">
         <div class="panel-head">
           <h3>Pipeline <small id="pipe-sum"></small></h3>
@@ -119,7 +130,46 @@
         <div class="chat dk-chat" id="chat"></div>
       </section>
     </main>
+
+    <section class="page dk-page hidden" id="page-tracks">
+      <div class="page-head"><div><h1>Tracks</h1><p class="muted" id="tracks-sub"></p></div>
+        <input class="search" id="tracks-q" type="search" placeholder="Filter by slug, lane, state…" aria-label="Filter tracks"></div>
+      <div class="glass table-wrap"><table class="dtable" id="tracks-table"><thead><tr>
+        <th data-k="slug">Track</th><th data-k="lane">Lane</th><th data-k="state">State</th><th data-k="progress">Progress</th>
+        <th data-k="loops">Loops</th><th data-k="runs">Runs</th><th data-k="verdict">Score</th><th data-k="plan">Plan</th><th data-k="last_activity">Last change</th>
+      </tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="page dk-page hidden" id="page-activity">
+      <div class="page-head"><div><h1>Activity</h1><p class="muted">Everything that happened on the machine, newest first. Kept 14 days.</p></div>
+        <input class="search" id="act-q" type="search" placeholder="Search activity…" aria-label="Search activity"></div>
+      <div class="filter-row" id="act-kinds"></div>
+      <div class="glass timeline" id="act-list"></div>
+      <button class="ghost" id="act-more">Load older</button>
+    </section>
+
+    <section class="page dk-page hidden" id="page-machine">
+      <div class="page-head"><div><h1>Machine</h1><p class="muted" id="machine-sub">History from the panel's own samples (every 15 s).</p></div>
+        <div class="seg" id="range-tabs"><button data-r="1h" aria-pressed="true">1h</button><button data-r="6h" aria-pressed="false">6h</button><button data-r="24h" aria-pressed="false">24h</button><button data-r="7d" aria-pressed="false">7d</button></div></div>
+      <div class="metric-grid" id="metric-grid"></div>
+      <div class="two-col">
+        <div class="glass"><h3>Services</h3><div class="svc" id="m-svc"></div><h3 style="margin-top:14px">Sources</h3><div class="svc" id="m-src"></div></div>
+        <div class="glass"><h3>ACE-Step</h3><div id="m-ace"></div></div>
+      </div>
+    </section>
+
+    <section class="page dk-page hidden" id="page-alerts">
+      <div class="page-head"><div><h1>Alerts</h1><p class="muted">Live problems, worst first. They clear by themselves when fixed.</p></div></div>
+      <div id="alerts-list"></div>
+    </section>
+    </div>
   </div>
+
+  <div class="cmdk hidden" id="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-box glass"><input id="cmdk-input" placeholder="Jump to a track, page or render…" autocomplete="off" aria-label="Search"><div id="cmdk-list" role="listbox"></div>
+      <div class="cmdk-foot muted"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close</div></div>
+  </div>
+  <div class="bell-pop glass hidden" id="bell-pop"></div>
 
   <aside class="drawer glass" id="drawer" aria-hidden="true">
     <button class="icon-btn drawer-x" id="drawer-x" aria-label="Close (Esc)">✕</button>
