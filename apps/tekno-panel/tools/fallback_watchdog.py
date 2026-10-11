@@ -33,6 +33,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import agent_status  # noqa: E402
 import team_mail  # noqa: E402
 
 FB = Path(os.environ.get("TEKNO_FALLBACK_DIR", "/mnt/agent-data/tekno_machine/fallback"))
@@ -124,6 +125,14 @@ def mail(body: str, thread: str) -> None:
         pass  # mail is best effort; the note and the run log are the record
 
 
+def roster(fn: str, *args, **kw) -> None:
+    """Tell the panel's agent roster what this run is doing (best effort: the status is never the record)."""
+    try:
+        getattr(agent_status, fn)("qwen-fallback", *args, **kw)
+    except (ValueError, OSError):
+        pass
+
+
 def tail(text: str, n: int = 40) -> str:
     return "\n".join(text.splitlines()[-n:])[-4000:]
 
@@ -198,6 +207,7 @@ class Card:
         return status, reason
 
     def call(self, name: str, args: dict) -> str:
+        roster("step", f"{name} {args.get('name', '')}".strip())
         if name == "read_note":
             return self.note.read_text(errors="replace")[-6000:]
         if name == "list_steps":
@@ -283,6 +293,10 @@ def run(note: Path, dry: bool) -> int:
     mail(f"Claude has been quiet for {STALE_S // 60}+ min, so the local Qwen fallback is continuing card {card.slug} "
          f"from its hand-off note. Run log: {logp}", f"card-{card.slug}")
     logp.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        agent_status.start("qwen-fallback", "qwen", card.slug, f"continue hand-off note {card.slug}")
+    except (ValueError, OSError):
+        pass
     with open(logp, "w") as log:
         try:
             agent(card, log)
@@ -290,6 +304,7 @@ def run(note: Path, dry: bool) -> int:
             log.write(f"run error: {type(e).__name__}: {e}\n")
     status, why = card.result or ("stuck", "the run ended without finish")
     set_status(note, status)
+    roster("done", "ok" if status == "done" else "failed", f"{status}: {why}"[:160])
     card.log(f"run ended: {status}: {why}", who="runner")
     mail(f"Qwen fallback ended card {card.slug}: {status} ({why}). Claude: review the note and {logp}.",
          f"card-{card.slug}")

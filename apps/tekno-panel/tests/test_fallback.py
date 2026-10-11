@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import agent_status  # noqa: E402
 import fallback_watchdog as fw  # noqa: E402
 import team_mail  # noqa: E402
 
@@ -25,6 +26,7 @@ def setup(tmp_path, monkeypatch, note_status="open", quiet_s=3600):
     note = fb / "handoff" / "rm-vite.md"
     note.write_text(f"STATUS: {note_status}\nCARD: t_225ce01d\nDIR: {cards / 'rm-vite'}\nNEXT:\n1. 01-hello.sh\nLOG:\n")
     monkeypatch.setattr(fw, "FB", fb)
+    monkeypatch.setattr(agent_status, "DIR", tmp_path / "agents")
     monkeypatch.setattr(fw, "CARDS", cards)
     monkeypatch.setattr(fw, "llm_up", lambda: True)
     monkeypatch.setattr(fw, "mail", lambda body, thread: None)
@@ -75,6 +77,9 @@ def test_runs_prepared_step_and_finishes_done(tmp_path, monkeypatch):
     log = next((fb / "runs").glob("*.log")).read_text()
     assert "hello-from-step" in log
     assert not (fb / "run.lock").exists()
+    a = agent_status.read("qwen-fallback")  # the panel's agent roster saw the run
+    assert a["model"] == "qwen" and a["card"] == "rm-vite" and a["state"] == "done"
+    assert any("run_step 01-hello.sh" in h["step"] for h in a["history"])
 
 
 def test_model_cannot_run_anything_but_prepared_steps(tmp_path, monkeypatch):
@@ -93,6 +98,7 @@ def test_run_without_finish_is_stuck_not_retried(tmp_path, monkeypatch):
     fw.main([])
     assert note.read_text().startswith("STATUS: stuck")
     assert fw.open_notes() == []
+    assert agent_status.read("qwen-fallback")["state"] == "failed"
 
 
 def test_model_error_ends_stuck(tmp_path, monkeypatch):
