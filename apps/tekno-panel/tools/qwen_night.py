@@ -56,6 +56,8 @@ CLAP_ROLE_P = 0.5   # CLAP must be this sure (softmax over the role prompts) to 
 CLAP_TAG_P = 0.25   # and this sure (softmax over the character prompts) to back up a tag
 AUDIO = {".wav", ".aif", ".aiff", ".flac"}
 MAX_BYTES = 40 * 1024 * 1024
+# library folders that are not sounds to build with (EarLoop holds reference tracks and analysis captures)
+EXCLUDE = {x for x in os.environ.get("TEKNO_LIBRARY_EXCLUDE", "EarLoop").split(",") if x}
 DAY = 24 * 3600
 
 ROLES = ("kick", "bass", "hat", "snare", "clap", "perc", "acid", "synth", "stab", "pad", "fx", "noise", "vocal", "loop",
@@ -246,6 +248,8 @@ def find(words: str | None, like: str | None, n: int) -> int:
     order = np.argsort(-(emb @ q))
     shown = 0
     for i in order:
+        if excluded(paths[i]):
+            continue
         if paths[i] == like:
             continue
         t = db.get(paths[i], {})
@@ -331,10 +335,15 @@ def check(rel: str, m: dict, answer: dict) -> tuple[dict, list[str]]:
     return {"role": role, "tags": tags[:4], "note": note}, dropped
 
 
+def excluded(rel: str) -> bool:
+    parts = Path(rel).parts
+    return bool(parts) and parts[0] in EXCLUDE
+
+
 def library_files() -> list[Path]:
     out = []
     for p in LIB.rglob("*"):
-        if p.suffix.lower() in AUDIO and p.is_file():
+        if p.suffix.lower() in AUDIO and p.is_file() and not excluded(str(p.relative_to(LIB))):
             try:
                 if p.stat().st_size <= MAX_BYTES:
                     out.append(p)
@@ -352,6 +361,9 @@ def parse_items(text: str) -> dict:
 def tag(limit: int, dry: bool) -> int:
     db_path = NIGHT / "tags.json"
     db = load_json(db_path, {})
+    if any(excluded(k) for k in db):  # folders excluded after they were tagged drop out of the index
+        db = {k: v for k, v in db.items() if not excluded(k)}
+        save_json(db_path, db)
     clap = None if dry else clap_or_none()
 
     def due(rel: str) -> bool:  # new, or tagged before CLAP could listen

@@ -223,3 +223,23 @@ def test_samples_tagged_without_clap_are_heard_again_once_clap_works(tmp_path, m
     qn.tag(100, False)
     db = json.loads((night / "tags.json").read_text())
     assert db["odd.wav"]["clap_role"] == "hat" and "error" in db["broken.wav"]  # broken files are not retried
+
+
+def test_earloop_folder_is_never_a_sample(tmp_path, monkeypatch, capsys):
+    lib, night = tmp_path / "lib", tmp_path / "night"
+    write_wavs(lib)
+    (lib / "EarLoop" / "refs").mkdir(parents=True)
+    import shutil
+    shutil.copy(lib / "Pack" / "Kicks" / "hard.wav", lib / "EarLoop" / "refs" / "loop_303_acid_1.wav")
+    for k, v in (("LIB", lib), ("NIGHT", night), ("clip48", lambda p: p), ("clap_or_none", lambda log=None: FakeClap())):
+        monkeypatch.setattr(qn, k, v)
+    monkeypatch.setattr(agent_status, "DIR", tmp_path / "agents")
+    monkeypatch.setattr(qn, "chat", lambda *a, **k: "{}")
+    night.mkdir()
+    (night / "tags.json").write_text(json.dumps({"EarLoop/refs/old.wav": {"role": "loop"}}))  # tagged before the rule
+    qn.tag(100, False)
+    db = json.loads((night / "tags.json").read_text())
+    assert not any(k.startswith("EarLoop") for k in db) and "Pack/Kicks/hard.wav" in db
+    qn.save_emb(["EarLoop/refs/x.wav"], __import__("numpy").array([[1.0, 0.0]], "float32"))
+    qn.find(None, "Pack/Kicks/hard.wav", 5)
+    assert "EarLoop" not in capsys.readouterr().out
