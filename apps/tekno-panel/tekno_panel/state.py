@@ -6,7 +6,7 @@ import threading
 import time
 import urllib.parse
 
-from . import acelog, files, insights, kanban, machine, procs
+from . import acelog, agents, files, setup, insights, kanban, local, machine, procs
 from .control import Controller
 from .history import History
 from .config import LANES, Settings
@@ -76,6 +76,7 @@ def merge_tracks(board_tracks: list[dict], disk: dict, ace: dict, now: float,
         t["files_lane"] = disk["files_lane"].get(slug)
         t["board_lane"], t["board_state"] = t["lane"], t["state"]
         t["plan"] = info.get("plan")
+        t["brief"] = info.get("brief")
         t["reports"] = info.get("reports") or {}
         runs = info.get("runs") or []
         t["runs"] = [run_summary(r) for r in runs[-8:]]
@@ -179,6 +180,7 @@ class Collector:
         self._disk = {"audio": [], "scores": [], "files_lane": {}, "cards": {}, "handoff": [], "history": []}
         self._hist: dict[str, dict] = {}
         self._health_slow: dict = {}
+        self._extras: dict = {}
         self._chat = self.snap["chat"]
         self._slugs: list[str] = []
         self._mail_thread: threading.Thread | None = None
@@ -240,8 +242,8 @@ class Collector:
             except Exception as e:  # keep the last good scan, flag the source
                 self._disk = {**self._disk, "ok": False, "error": f"card scan failed: {e}"}
             try:
-                journal = acelog.journal(s.ace_units)
-                lora = acelog.lora_log(s.lora_log)
+                journal = acelog.journal(s.ace_units) if s.ace_enabled else []
+                lora = acelog.lora_log(s.lora_log) if s.ace_enabled else None
                 self._journal = journal
                 self._health_slow = {
                     "disk": machine.disk(s.disk_path, s.disk_warn_gb),
@@ -250,6 +252,7 @@ class Collector:
                 }
             except Exception as e:
                 self._health_slow = {**self._health_slow, "error": f"health probes failed: {e}"}
+            self._extras = self._slow_extras(now)
         board = kanban.read_board(s.kanban_path)
         slugs = sorted({t.slug for t in board["tasks"] if t.slug} | set(self._disk["files_lane"]))
         self._slugs = slugs
@@ -264,7 +267,10 @@ class Collector:
             if not p.get("card") and p.get("task"):
                 p["card"] = task_card.get(p["task"])
         gen = [p for p in running if "Generate" in (p.get("lanes") or [])]
-        ace = machine.ace(s.ace_url, s.machine_root / ".gpu.lock", s.ace_log, gen, s.proc_root, now)
+        if s.ace_enabled:
+            ace = machine.ace(s.ace_url, s.machine_root / ".gpu.lock", s.ace_log, gen, s.proc_root, now)
+        else:  # ACE-Step is gone: nothing to probe, and the UI hides its sections
+            ace = {"ok": False, "enabled": False, "status": "removed", "job": None, "events": [], "log": []}
         job = ace.get("job")
         if job and (job.get("script") or "").startswith("ace_sections"):
             plan = ((self._disk.get("cards") or {}).get(job.get("card")) or {}).get("plan")
@@ -309,6 +315,7 @@ class Collector:
                 "tracks_today": tracks_today(board_tracks, now), "tracks_cap": s.tracks_per_day_cap,
             },
             "chat": self._chat,
+            **self._extras,
             "freshness": {
                 "kanban": max((e.get("created_at") or 0 for e in events), default=None),
                 "files": max((c.get("mtime") or 0 for c in cards_info.values()), default=None),
@@ -324,6 +331,27 @@ class Collector:
         with self.lock:
             self.snap = snap
         return snap
+
+    def _slow_extras(self, now: float) -> dict:
+        """Local model, fallback, style presets, reference tracks and the agent roster: small files, read every 6 s."""
+        s = self.s
+        out = {}
+        for key, fn in (("local", lambda: local.local_model(s.vllm_url, machine.gpu())),
+                        ("styles", lambda: local.styles(s.house_profile_path)),
+                        ("references", lambda: local.references(s.references_dir)),
+                        ("agents", lambda: agents.roster(s.agents_path, now)),
+                        ("setup", lambda: setup.inventory(s.machine_root, s.machine_root.parent / "apps"))):
+            try:
+                out[key] = fn()
+            except Exception as e:  # one odd file must not blank the snapshot
+                out[key] = [] if key == "agents" else None
+                out.setdefault("extras_errors", []).append(f"{key}: {e}")
+        try:
+            out["fallback"] = local.fallback(s.fallback_path, (out.get("local") or {}).get("ok"), now)
+        except Exception as e:
+            out["fallback"] = None
+            out.setdefault("extras_errors", []).append(f"fallback: {e}")
+        return out
 
     def _enrich(self, snap: dict, board: dict, ace: dict, now: float) -> None:
         """Pause state, alerts, audit, activity timeline and metrics history."""

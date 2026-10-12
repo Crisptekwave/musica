@@ -73,8 +73,10 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     now = time.time()
-    first = not STATE.exists()
-    state = {} if first else json.loads(STATE.read_text())
+    try:
+        state, first = json.loads(STATE.read_text()), False
+    except (OSError, ValueError):  # missing, or cut short by a full disk: start over quietly, like a first run
+        state, first = {}, True
     items = due(problems(DB, now), state, now)
     if items and not first:
         subject, body = message(items)
@@ -95,7 +97,9 @@ def main(argv=None) -> int:
         state[p["key"]] = now
     state = {k: v for k, v in state.items() if now - v < 7 * 86400}
     STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps(state, indent=1) + "\n")
+    tmp = STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1) + "\n")
+    tmp.replace(STATE)
     return 0
 
 

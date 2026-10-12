@@ -209,3 +209,41 @@ TEKNO_DEMO=1 TEKNO_STATE_DIR=/tmp/tp .venv/bin/python -m tekno_panel.server   # 
 The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` (phone screens + socket), `js/desktop.js` + `desktop.css` (desktop room),
 `js/bots.js` (creatures), `js/player.js` (Web Audio), `js/charts.js`. Icons come from
 `tools/make_icons.py` (Pillow).
+
+## v3: Studio, palette, local model, fallback, agents
+
+- **Studio** (`#/studio`, phone: Machine tab): view-only live frames of the REAPER instances (one per producer, each on its own
+  Xvfb display :100-:199). `tools/reaper_snap.py` (user service `tekno-reaper-snap.service`) grabs one JPEG per instance with
+  ffmpeg x11grab every 2 s into `$TEKNO_DATA_DIR/reaper/<n>.jpg` and lists them in `instances.json`. It only grabs while the
+  Studio page polls (`/api/reaper` touches `reaper/viewing`; older than 30 s = idle). The panel parses each project's `.rpp`
+  read-only (tracks, items, tempo, length) and the newest WAV in the card's `out/` or `mix/`. Routes: `GET /api/reaper`,
+  `GET /reaper/frame/<100-199>.jpg` (no-store). There is no input path to REAPER.
+- **Palette** (`#/palette`): `music_library/ryan_palette/index.json` + README, filters, play button via `/palette/media/<path>`
+  (that folder only, audio extensions only). Env `TEKNO_PALETTE_DIR`.
+- **Local model / Fallback**: vLLM at `TEKNO_VLLM_URL` (default 127.0.0.1:8001), the `tekno_machine/fallback` folder (mode,
+  heartbeat, notes, runs). One new control action `fallback.mode` (`auto` | `off` only; passcode, audit; written by the helper).
+- **Agents**: `tekno-agent start|step|done <name>` (tools/agent_status.py) writes `tekno_machine/agents/<name>.json`; the
+  overview shows the roster (working agent silent for 20 min = amber, finished ones hide after 24 h).
+- **Night shift** (`tools/qwen_night.py`, timers `tekno-night-tag` 23:10 UTC and `tekno-night-digest` 07:50 Brussels): the
+  local Qwen gets no tools. `tag` measures each library sample, lets CLAP (`laion/larger_clap_music`, CPU) listen to it,
+  and asks Qwen for role, tags and a note; the runner keeps only tags the measurements or CLAP back up, lets a path hint
+  ("Kicks/") and then a confident CLAP role decide the role, and writes `tekno_machine/night/tags.json` plus a CLAP index
+  (`night/clap/`) for `qwen_night.py find "distorted gabber kick"` / `find --like <path>`. Python: `/mnt/agent-data/apps/models/venv`.
+  `digest` posts a <= 5 line summary plus the raw facts of the last 24 h to agent-mail thread `morning-report` as qwen.
+  Both report as `qwen-night` in the agent roster. The phone Bots tab shows one creature per roster agent.
+- **FreeLLMAPI gateway** (`tools/llm.py`): set `TEKNO_GATEWAY_LLM` (e.g. `http://100.84.117.126:3001/v1`) and
+  `TEKNO_GATEWAY_MODEL` to let the fallback think with a bigger free model (`TEKNO_FALLBACK_ORDER`, default
+  `gateway,local`) and give the night shift a backup (`TEKNO_NIGHT_ORDER`, default `local,gateway`). The key is read
+  from the `FREELLMAPI_API_KEY` line in `~/.hermes/.env`, never copied. Down or rate-limited endpoints are skipped.
+- **Setup + Changes** (Machine tab, `tekno_panel/setup.py`): read from disk on every refresh, never a kept list:
+  plugin bundles under `apps/*/{vst3,clap,lv2}` (and `apps/*/usr/lib/...`), models in `apps/models/hf/hub`, scripts in
+  `tekno_machine/tools`, hand-off folders, gateway env, night-shift results, and `tekno_machine/CHANGELOG.md` (one
+  `- ` line per change; every VM job appends one when it ends).
+- **Watchdog** (`tools/watchdog.py`, timer `tekno-watchdog` every 5 min, plain code): VM job runtime (warn 2 h, stops
+  the job's own process tree at 4 h), Claude Code token burn per hour and repeated identical tool calls (from the
+  transcripts in `CLAUDE_CONFIG_DIR`), stale agents, failed user units (tekno-* restarted once per 12 h), local model,
+  panel, gateway, disk, error lines in the tekno units' journal, failed VM job logs, night-shift errors. New issues
+  are posted once to agent-mail thread `watchdog` (error logs with a local-Qwen summary); `watchdog/state.json` holds
+  open issues and `needs_claude`; the panel shows it under Setup.
+- **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
+- ACE-Step probes are off unless `TEKNO_ACE_ENABLED=1`.

@@ -90,7 +90,9 @@
     const svcs = h.services || [];
     const vr = g.ok ? g.mem_used / g.mem_total : 0;
     const k = [];
-    k.push(`<div class="kpi ${a.status === "generating" ? "good" : a.ok ? "" : "bad"}">ACE <b>${esc(a.status || "?")}${a.job ? ` ${Number(a.progress ?? 0)}%` : ""}</b>${a.job ? `<span class="mono">${esc(a.job.card || "UI take")}</span>` : ""}</div>`);
+    const loc = snap.local;
+    if (a.enabled === false) k.push(`<div class="kpi ${loc?.ok ? "good" : "bad"}" title="${esc(loc?.model || "")}">Qwen <b>${loc ? (loc.ok ? "up" : "down") : "?"}</b></div>`);
+    else k.push(`<div class="kpi ${a.status === "generating" ? "good" : a.ok ? "" : "bad"}">ACE <b>${esc(a.status || "?")}${a.job ? ` ${Number(a.progress ?? 0)}%` : ""}</b>${a.job ? `<span class="mono">${esc(a.job.card || "UI take")}</span>` : ""}</div>`);
     const pr = snap.processes || [];
     k.push(`<div class="kpi ${pr.length ? "good" : ""}" title="${esc(pr.map(p => `${p.script} · ${p.card || "?"} · pid ${p.pid}`).join("\n") || "no lane script running")}">Running <b>${pr.length ? esc(pr[pr.length - 1].script) : "–"}</b>${pr.length > 1 ? `<span class="mono">+${pr.length - 1}</span>` : ""}</div>`);
     if (g.ok) {
@@ -147,7 +149,7 @@
         const moved = S.prevLanes[t.slug] && S.prevLanes[t.slug] !== t.lane;
         S.prevLanes[t.slug] = t.lane;
         const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id, t.current_task?.last_error, S.drawer?.slug === t.slug,
-          t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm]);
+          t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm, t.brief]);
         if (el.dataset.key !== key) {
           el.dataset.key = key;
           el.className = `tcard state-${t.state}${S.drawer?.slug === t.slug ? " sel" : ""}`;
@@ -169,7 +171,7 @@
     const act = t.lane === "Review" && t.review_task_id ? `<div class="tc-actions">
         <button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject</button></div>` : "";
-    return `<div class="tc-slug" title="${esc(t.slug)}">${esc(t.slug)}</div>
+    return `<div class="tc-slug" title="${esc(t.slug)}">${esc(t.slug)}</div>${V3.chips(t)}
       <div class="tc-top"><span class="pill sm ${esc(t.state)}">${esc(STATE_LABEL[t.state] || t.state)}</span>${t.loops ? `<span class="tc-loop">↺${Number(t.loops)}</span>` : ""}<b class="tc-pct">${Number(t.progress) || 0}%</b></div>
       <div class="tc-bar"><i style="width:${Math.max(2, Number(t.progress) || 0)}%"></i></div>
       ${t.live ? `<div class="tc-live" title="${esc(t.live.script)}${t.live.pid ? " · pid " + Number(t.live.pid) : ""} · seen via ${esc(t.live.via)}"><i></i><span>${esc(t.live.script)}</span></div>` : ""}${sb ? `<div class="tc-back${sb.hypothetical ? " dry" : ""}"><b>${esc(sb.from || "?")} → ${esc(sb.to)}</b>${sb.hypothetical ? " (dry run)" : ""} ${esc(sb.reason)}</div>` : ""}${err}${note}${act}`;
@@ -359,8 +361,13 @@
         <div><b>${h.load?.["1m"] ?? "–"}</b><span>load</span></div>`;
       Charts.spark($("#ch-gpu"), S.gpuHist, 100);
     } else $("#gpu-kv").innerHTML = `<div class="warn-text">${esc(g.error || "no GPU data")}</div>`;
-    $("#ace-box").innerHTML = `<h4>ACE-Step</h4>${Live.aceHtml(a)}${Live.gpuAppsHtml(g)}${Live.journalHtml(h.journal)}
+    const ace = a.enabled !== false;  // ACE-Step was removed: the box only shows when something still probes it
+    $("#ace-box").innerHTML = `${ace ? `<h4>ACE-Step</h4>${Live.aceHtml(a)}${Live.journalHtml(h.journal)}` : ""}${Live.gpuAppsHtml(g)}
       <h4>Running now</h4>${Live.procsHtml(snap.processes)}`;
+    $("#setup-box").innerHTML = V3.setupHtml(snap);
+    $("#changes-box").innerHTML = V3.changesHtml(snap);
+    $("#local-box").innerHTML = V3.localHtml(snap);
+    $("#fb-box").innerHTML = V3.fallbackHtml(snap);
     $("#disk-box").innerHTML = d.ok ? `<div class="disk-line"><b class="${d.warn ? "warn-text" : ""}">${d.free_gb} GB</b> free on ${esc(d.path)} · ${d.used_pct}% used${d.warn ? ` · <span class="warn-text">under ${d.warn_gb} GB</span>` : ""}</div>
       <div class="disk-bar ${d.warn ? "warn" : ""}" style="height:8px"><i style="width:${Number(d.used_pct) || 0}%"></i></div>` : `<span class="warn-text">${esc(d.error || "no disk data")}</span>`;
     $("#svc-box").innerHTML = (h.services || []).map(s => `<div class="svc-row"><span class="sd ${esc(s.status)}"></span><b>${esc(s.name)}</b><span class="via">${esc(s.status)} · ${esc(s.via)}</span></div>`).join("")
@@ -507,7 +514,7 @@
   }
 
   // ================= SaaS shell: pages, alerts, command palette =================
-  const PAGES = ["overview", "tracks", "activity", "machine", "controls", "alerts"];
+  const PAGES = ["overview", "tracks", "activity", "studio", "palette", "machine", "controls", "alerts"];
   Object.assign(S, { page: "overview", range: store.get("tekno-range", "1h"), actKind: "", actQ: "", actRows: null, actOlder: [],
     sort: { k: "last_activity", dir: -1 }, tracksQ: "", metrics: null, metricsAt: 0, cmdSel: 0 });
   const KIND_LABEL = { run: "run", kanban: "board", render: "render", ace: "ACE", service: "service", mail: "mail", alert: "alert", action: "you" };
@@ -522,14 +529,24 @@
     if (S.page === "overview") { bots.start(); requestAnimationFrame(() => bots.layout()); } else bots.stop();
     if (m[1] === "tracks" && m[2]) openDrawer({ slug: m[2] });
     $("#dk-main").scrollTop = 0;
+    if (S.page === "studio") V3.studio.start($("#studio-box")); else V3.studio.stop();  // frames only while the page is open
+    if (S.page === "palette") V3.palette.mount($("#palette-box")); else V3.palette.stop();
+    $("#agent-strip").classList.toggle("hidden", S.page !== "overview" || !(S.snap?.agents || []).length);
     if (S.page === "machine") loadMetrics(true);
     if (S.page === "activity") loadActivity();
     if (S.snap) renderPage(S.snap);
   }
   function go(page) { location.hash = "#/" + page; }
 
+  function renderAgents(snap) {
+    const list = snap.agents || [], strip = $("#agent-strip");
+    strip.classList.toggle("hidden", S.page !== "overview" || !list.length);
+    const html = V3.agentsHtml(list);
+    if (strip.dataset.html !== html) { strip.dataset.html = html; strip.innerHTML = html; }
+  }
   function renderPage(snap) {
     renderBell(snap);
+    renderAgents(snap);
     if (S.page === "tracks") renderTracksPage(snap);
     else if (S.page === "activity") renderActivity(snap);
     else if (S.page === "machine") { renderMachinePage(snap); if (Date.now() - S.metricsAt > 15000) loadMetrics(); }
@@ -665,7 +682,14 @@
     const h = snap.health || {};
     $("#m-svc").innerHTML = (h.services || []).map(s => `<div class="svc-row"><span class="sd ${esc(s.status)}"></span><b>${esc(s.name)}</b><span class="via">${esc(s.status)} · ${esc(s.via)}</span></div>`).join("");
     $("#m-src").innerHTML = Live.freshnessHtml(snap);
-    $("#m-ace").innerHTML = Live.aceHtml(h.ace) + Live.gpuAppsHtml(h.gpu) + Live.journalHtml(h.journal) + `<h3 style="margin-top:14px">Running now</h3>` + Live.procsHtml(snap.processes);
+    const ace = h.ace?.enabled !== false;  // ACE-Step was removed: hide its sections unless a config still probes it
+    $("#m-ace-h").classList.toggle("hidden", !ace);
+    $("#m-ace").innerHTML = (ace ? Live.aceHtml(h.ace) + Live.journalHtml(h.journal) : "") + Live.gpuAppsHtml(h.gpu) + `<h3 style="margin-top:14px">Running now</h3>` + Live.procsHtml(snap.processes);
+    $("#m-local").innerHTML = V3.localHtml(snap);
+    $("#m-fb").innerHTML = V3.fallbackHtml(snap);
+    const st = V3.stylesHtml(snap);
+    $("#m-styles-wrap").classList.toggle("hidden", !st); $("#m-styles").innerHTML = st;
+    $("#m-refs").innerHTML = V3.refsHtml(snap) || `<span class="muted">No reference folder.</span>`;
   }
 
   // ---- command palette

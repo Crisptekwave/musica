@@ -1,0 +1,11 @@
+[Unit]
+Description=Tekno Machine night shift: local Qwen tags the sample library (runner checks every tag against measurements)
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/tekno-panel/env
+Environment=HF_HOME=/mnt/agent-data/apps/models/hf HF_HUB_OFFLINE=1 OMP_NUM_THREADS=4
+ExecStart=/mnt/agent-data/apps/models/venv/bin/python %h/.config/agent-mail/qwen_night.py tag
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=5h

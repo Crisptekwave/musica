@@ -1,0 +1,9 @@
+[Unit]
+Description=Tag new samples every night
+
+[Timer]
+OnCalendar=*-*-* 23:10:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

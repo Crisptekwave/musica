@@ -103,6 +103,16 @@ class Settings:
     # ACE runs as user units of another account: their lifecycle is read from the system journal
     # (journalctl USER_UNIT=...), their program output from the log files above.
     ace_units: tuple = ("acestep-api.service", "acestep-lora.service")
+    # ACE-Step was removed from the VM: its probes (health, journal, LoRA log) only run when TEKNO_ACE_ENABLED=1
+    ace_enabled: bool = True
+    # local LLM (vLLM, OpenAI-compatible) and the Claude-limit fallback folder
+    vllm_url: str = "http://127.0.0.1:8001"
+    fallback_dir: Path | None = None
+    agents_dir: Path | None = None  # status files written by tekno-agent
+    palette_dir: Path = Path("/mnt/agent-data/music_library/ryan_palette")
+    references_dir: Path = Path("/mnt/agent-data/ryan_tracks/references")
+    # official REAPER, one instance per producer: /mnt/agent-data/apps/reaper/inst-<slug>
+    reaper_root: Path = Path("/mnt/agent-data/apps/reaper")
     proc_root: Path = Path("/proc")
     # the panel's own data (metrics history, activity, audit log): on the data disk, never the root disk
     data_dir: Path = Path("/mnt/agent-data/apps/tekno-panel-data")
@@ -131,6 +141,18 @@ class Settings:
         return self.cards_dir or (self.machine_root / "cards")
 
     @property
+    def fallback_path(self) -> Path:
+        return self.fallback_dir or (self.machine_root / "fallback")
+
+    @property
+    def agents_path(self) -> Path:
+        return self.agents_dir or (self.machine_root / "agents")
+
+    @property
+    def house_profile_path(self) -> Path:
+        return self.machine_root / "tools" / "house_profile.json"
+
+    @property
     def handoff_path(self) -> Path:
         return self.machine_root / "handoff"
 
@@ -145,10 +167,7 @@ class Settings:
 
 DEFAULT_SERVICES = [
     # name shown in the UI, how to check it. Checks are tried in order; first conclusive wins.
-    {"name": "acestep-api", "unit": "acestep-api", "cgroup": "acestep-api.service",
-     "http": "http://127.0.0.1:8011/health", "process": "acestep --server-name"},
-    {"name": "acestep-lora", "journal": "acestep-lora.service", "lora_log": True,
-     "lora_probe": "http://127.0.0.1:8011/monitoring/summary"},
+    {"name": "local-qwen", "unit": "vllm-heretic", "http": "http://127.0.0.1:8001/v1/models", "process": "vllm serve"},
     {"name": "hermes-gateway", "unit": "hermes-gateway", "process": "hermes gateway"},
     {"name": "litellm", "unit": "aihub-litellm", "http": "http://127.0.0.1:4000/health/liveliness",
      "process": "litellm"},
@@ -179,6 +198,11 @@ def load_settings() -> Settings:
         push_interval=float(_env("TEKNO_PUSH_INTERVAL", "1.5")),
         data_dir=Path(_env("TEKNO_DATA_DIR", "/mnt/agent-data/apps/tekno-panel-data")),
         controls=_env("TEKNO_CONTROLS", "1").lower() in ("1", "true", "yes", "on"),
+        ace_enabled=_env("TEKNO_ACE_ENABLED", "0").lower() in ("1", "true", "yes", "on"),
+        vllm_url=_env("TEKNO_VLLM_URL", "http://127.0.0.1:8001"),
+        palette_dir=Path(_env("TEKNO_PALETTE_DIR", "/mnt/agent-data/music_library/ryan_palette")),
+        references_dir=Path(_env("TEKNO_REFERENCES_DIR", "/mnt/agent-data/ryan_tracks/references")),
+        reaper_root=Path(_env("TEKNO_REAPER_ROOT", "/mnt/agent-data/apps/reaper")),
         ace_user=_env("TEKNO_ACE_USER", "Gebruiker"),
         ace_uid=int(_env("TEKNO_ACE_UID", "1001")),
         ace_workdir=Path(_env("TEKNO_ACE_WORKDIR", "/mnt/agent-data/ace-step")),
@@ -188,6 +212,10 @@ def load_settings() -> Settings:
         s.kanban_db = Path(os.environ["TEKNO_KANBAN_DB"])
     if os.environ.get("TEKNO_CARDS_DIR"):
         s.cards_dir = Path(os.environ["TEKNO_CARDS_DIR"])
+    if os.environ.get("TEKNO_AGENTS_DIR"):
+        s.agents_dir = Path(os.environ["TEKNO_AGENTS_DIR"])
+    if os.environ.get("TEKNO_FALLBACK_DIR"):
+        s.fallback_dir = Path(os.environ["TEKNO_FALLBACK_DIR"])
     if os.environ.get("TEKNO_REFERENCE_AUDIO"):
         s.reference_audio = Path(os.environ["TEKNO_REFERENCE_AUDIO"])
     services_json = os.environ.get("TEKNO_SERVICES_JSON")

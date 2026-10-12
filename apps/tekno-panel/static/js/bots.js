@@ -1,4 +1,5 @@
-/* Live bots: one particle "creature" per lane agent, drawn on a 2D canvas with additive blending. */
+/* Live bots: one particle "creature" per agent, drawn on a 2D canvas with additive blending.
+   Defaults to the fixed pipeline lanes; setNames() swaps in any list (the phone shows the live agent roster). */
 (function () {
   const LANES = ["Plan", "Generate", "Stems", "Sound Swap", "Edit", "Filter", "Variation", "Mix", "Polish", "Master", "Score", "Review"];
   const COLORS = {
@@ -20,10 +21,20 @@
   class Bots {
     constructor(canvas, onTap, opts = {}) {
       this.c = canvas; this.ctx = canvas.getContext("2d"); this.onTap = onTap; this.opts = opts;
+      this.names = LANES;
       this.orbs = LANES.map((l, i) => new Orb(l, i));
       this.flights = []; this.lastHandoff = {}; this.running = false; this.t0 = performance.now();
       canvas.addEventListener("click", e => this.tap(e));
       window.addEventListener("resize", () => this.layout());
+      this.layout();
+    }
+
+    setNames(names) {
+      if (names.join("\n") === this.names.join("\n")) return;
+      const old = new Map(this.orbs.map(o => [o.lane, o]));
+      this.names = names;
+      this.orbs = names.map((n, i) => Object.assign(old.get(n) || new Orb(n, i), { i }));
+      this.flights = [];
       this.layout();
     }
 
@@ -33,8 +44,9 @@
       this.c.width = Math.round(w * dpr); this.c.height = Math.round(h * dpr);
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.w = w; this.h = h;
-      const oc = this.opts.cols, cols = (typeof oc === "function" ? oc(w, h) : oc) || (w > 600 ? 4 : 3);
-      const rows = Math.ceil(LANES.length / cols), oy = this.opts.oy || 0.45;
+      const oc = this.opts.cols, n = Math.max(1, this.orbs.length);
+      const cols = Math.min(n, (typeof oc === "function" ? oc(w, h) : oc) || (w > 600 ? 4 : 3));
+      const rows = Math.ceil(n / cols), oy = this.opts.oy || 0.45;
       const cw = w / cols, rh = h / rows;
       this.R = Math.min(cw, rh) * 0.2;
       this.orbs.forEach((o, i) => {
@@ -178,7 +190,7 @@
       ctx.fillText(o.lane.toUpperCase(), o.x, y);
       ctx.font = "600 10px ui-monospace, monospace";
       ctx.fillStyle = "#8a9a86";
-      const st = o.state === "idle" ? "sleeping" : o.state;
+      const st = (o.data && o.data.label) || (o.state === "idle" ? "sleeping" : o.state);
       ctx.fillText(st, o.x, y + 13);
       if (o.state === "idle") {
         const k = (time * 0.5 + o.i * 0.3) % 1;

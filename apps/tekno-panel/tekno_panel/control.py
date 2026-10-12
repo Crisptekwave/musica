@@ -17,6 +17,7 @@ for the lane scripts and the ACE/agent-mail user units; ``sudo -n systemctl`` fo
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import threading
@@ -29,6 +30,7 @@ TASK_RE = re.compile(r"^t_[0-9a-f]{6,32}$")
 SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 RUN_STEPS = ("plan", "gen", "edit", "stems", "swap", "var", "mix", "master")
 MAX_NOTE = 1000
+SETTABLE_FALLBACK = ("auto", "off")  # "force" exists in the fallback folder but is never set from the panel
 
 
 class ActionError(Exception):
@@ -71,6 +73,8 @@ ACTIONS = {
                  "help": "run_e2e.sh <card> <step> as the lane user, logged to the card's next runN.log."},
     "lane.stop": {"tier": "danger", "label": "Stop the running lane",
                   "help": "SIGTERM to the lane scripts and run_e2e.sh running for that card."},
+    "fallback.mode": {"tier": "danger", "label": "Set the Claude-limit fallback",
+                      "help": "Writes fallback/MODE: auto (local Qwen continues hand-off notes when Claude is quiet) or off."},
     "service.restart": {"tier": "danger", "label": "Restart a service", "help": "systemctl restart (allowlisted units only)."},
 }
 
@@ -86,6 +90,8 @@ class Controller:
         self.recent: list[float] = []
         self.audit_path = data_dir / "audit.jsonl"
         self.services = services_map(s.ace_user, s.ace_uid)
+        if not getattr(s, "ace_enabled", True):  # ACE-Step is gone: no restart buttons for it
+            self.services = {k: v for k, v in self.services.items() if not k.startswith("acestep")}
 
     # ---------- helpers ----------
     @staticmethod
@@ -162,7 +168,10 @@ class Controller:
                 self.audit(rec)
                 return {"ok": True, "summary": summary, "result": result}
             try:
-                if argv[0] == "sudo" and self.helper:
+                if name == "fallback.mode":  # the helper writes the MODE file; without one (tests) write it here
+                    value = {k: v for k, v in params.items() if k != "passcode"}
+                    code, out, err = self.helper(name, value) if self.helper else self.set_fallback_mode(argv[1])
+                elif argv[0] == "sudo" and self.helper:
                     code, out, err = self.helper(name, {k: v for k, v in params.items() if k != "passcode"})
                 else:
                     code, out, err = self.runner(argv)
@@ -174,6 +183,27 @@ class Controller:
             if not ok:
                 raise ActionError(f"{summary} failed: {(err or out).strip()[-300:] or f'exit {code}'}", 502)
             return {"ok": True, "summary": summary, "result": "started" if detached else (out.strip()[-400:] or "done")}
+
+    def set_fallback_mode(self, value: str) -> tuple[int, str, str]:
+        """Write fallback/MODE in place (it is 664 for the group; a rename would change its owner and mode)."""
+        if value not in SETTABLE_FALLBACK:
+            return 125, "", "mode must be auto or off"
+        fb = self.s.fallback_path
+        mode = fb / "MODE"
+        if not fb.is_dir():
+            return 125, "", f"{fb} does not exist"
+        if not os.access(mode if mode.exists() else fb, os.W_OK):
+            return 126, "", f"{mode} is not writable by this user (group needs rw)"
+        try:
+            new = not mode.exists()
+            fd = os.open(mode, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o664)
+            with os.fdopen(fd, "w") as fh:
+                fh.write(value + "\n")
+            if new:
+                os.chmod(mode, 0o664)
+        except OSError as e:
+            return 127, "", str(e)
+        return 0, f"MODE = {value}", ""
 
     def _flag(self, name: str, params: dict) -> str:
         p = self.paused_path
@@ -247,6 +277,11 @@ class Controller:
             if not pids:
                 raise ActionError(f"nothing is running for {slug}", 409)
             return ["sudo", "-n", "kill", "-TERM"] + [str(p) for p in pids], f"Stop {slug} (pids {', '.join(map(str, pids))})", False
+        if name == "fallback.mode":
+            value = str(params.get("mode", ""))
+            if value not in SETTABLE_FALLBACK:
+                raise ActionError("mode must be exactly auto or off")
+            return ["fallback-mode", value], f"Fallback mode → {value}", False
         if name == "service.restart":
             svc = str(params.get("service", ""))
             if svc not in self.services:

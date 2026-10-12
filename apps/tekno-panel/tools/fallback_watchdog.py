@@ -8,7 +8,7 @@ This one-shot job (user timer, every 10 min) starts the local agent only when AL
   - <FALLBACK>/MODE is "auto" (or "force": skip the heartbeat check; "off": never run)
   - Claude's heartbeat AND every card folder are quiet for STALE_S (Claude is not working)
   - a hand-off note says "STATUS: open"
-  - the local model answers on vLLM, and no fallback run is already going
+  - a model answers (FreeLLMAPI gateway first when configured, else the local vLLM), and no fallback run is going
 
 Allowlist only (Ryan, 2026-10-11): the model gets NO shell and NO file editing. It is bound to the one note it
 claimed and can only call the tools in TOOLS: read the note, run one of Claude's step scripts for that card,
@@ -29,17 +29,17 @@ import re
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_status  # noqa: E402
+import llm  # noqa: E402
 import team_mail  # noqa: E402
 
 FB = Path(os.environ.get("TEKNO_FALLBACK_DIR", "/mnt/agent-data/tekno_machine/fallback"))
 CARDS = Path(os.environ.get("TEKNO_CARDS_DIR", "/mnt/agent-data/tekno_machine/cards"))
-LLM = os.environ.get("TEKNO_FALLBACK_LLM", "http://127.0.0.1:8001/v1")
-MODEL = os.environ.get("TEKNO_FALLBACK_MODEL", "qwen3-coder")
+# the bigger free gateway models think better; the local Qwen is always there when the gateway or its quota is down
+ORDER = os.environ.get("TEKNO_FALLBACK_ORDER", "gateway,local").split(",")
 PY = os.environ.get("TEKNO_TOOLS_PY", "/mnt/agent-data/ace-step/tools-venv/bin/python")
 SCORE = os.environ.get("TEKNO_SCORE_CARD", "/mnt/agent-data/tekno_machine/scripts/score_card.py")
 KANBAN = [os.path.expanduser("~/.hermes/hermes-agent/venv/bin/hermes"), "kanban", "--board", "tekno-machine"]
@@ -111,11 +111,7 @@ def field(note: Path, name: str) -> str:
 
 
 def llm_up() -> bool:
-    try:
-        with urllib.request.urlopen(LLM + "/models", timeout=5) as r:
-            return r.status == 200
-    except OSError:
-        return False
+    return llm.up(ORDER)
 
 
 def mail(body: str, thread: str) -> None:
@@ -241,11 +237,10 @@ class Card:
 def chat(messages: list) -> dict:
     tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
               "parameters": {"type": "object", "properties": t["params"], "required": list(t["params"])}}} for t in TOOLS]
-    body = {"model": MODEL, "messages": messages, "tools": tools, "tool_choice": "auto", "temperature": 0.2,
-            "max_tokens": 1024}
-    req = urllib.request.Request(LLM + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        return json.loads(r.read())["choices"][0]["message"]
+    body = {"messages": messages, "tools": tools, "tool_choice": "auto", "temperature": 0.2, "max_tokens": 1024}
+    msg, used = llm.complete(body, ORDER)
+    roster("step", f"model {used}")
+    return msg
 
 
 def agent(card: Card, log) -> None:
@@ -281,7 +276,7 @@ def run(note: Path, dry: bool) -> int:
     stamp = time.strftime("%Y%m%d-%H%M%S")
     logp = FB / "runs" / f"{stamp}-{card.slug}.log"
     if dry:
-        print(f"would continue {card.slug} (card {card.card_id or '?'}) with {MODEL}")
+        print(f"would continue {card.slug} (card {card.card_id or '?'}) with {', '.join(ORDER)}")
         return 0
     nxt = note.read_text(errors="replace").split("NEXT:", 1)[-1].split("NOT ALLOWED:", 1)[0]
     if JUDGEMENT_RE.search(nxt) or not card.plan:
@@ -327,7 +322,7 @@ def main(argv=None) -> int:
         print("no open hand-off notes")
         return 0
     if not llm_up():
-        print("local model not answering on vLLM: skip")
+        print("no model answering (gateway or local vLLM): skip")
         return 0
     lock = FB / "run.lock"
     try:

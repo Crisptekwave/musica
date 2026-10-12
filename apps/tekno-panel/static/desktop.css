@@ -321,3 +321,25 @@ kbd { font: 700 10px var(--mono); padding: 1px 5px; border-radius: 5px; border: 
 .cmdk-item .s { margin-left: auto; font-size: 12px; color: var(--muted); }
 .cmdk-item.sel, .cmdk-item:hover { background: rgba(57,255,20,.1); }
 .cmdk-foot { font-size: 11px; padding: 8px 14px; border-top: 1px solid rgba(255,255,255,.06); }
+
+/* narrow screens (phone opening /desktop): wrap instead of cutting content off. Above 700px nothing changes. */
+@media (max-width: 700px) {
+  .dk-top { height: auto; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; }
+  .kpis { order: 3; flex: 1 1 100%; height: auto; overflow: visible; }
+  .dk-top-right { flex-wrap: wrap; margin-left: auto; }
+  .cmdk-btn { display: none; }
+  .dk-page { padding: 14px 12px 40px; }
+  .page-head { flex-wrap: wrap; align-items: flex-start; }
+  .page-head .search { width: 100%; }
+  .metric-grid, .two-col { grid-template-columns: 1fr; }
+  .dk-kv, .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ctl-row { flex-wrap: wrap; }
+  .ctl-row > .btn, .ctl-row > .ghost { margin-left: auto; }
+  .dk-grid { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: none; }
+  .dk-grid > * { grid-area: auto !important; }
+  .board { flex-direction: column; overflow: visible; }
+  .lane, .lane.empty { flex: 0 0 auto; min-width: 0; }
+  .lane.empty .lane-head { writing-mode: horizontal-tb; transform: none; height: auto; padding: 6px 10px; }
+  .tl-row { grid-template-columns: 56px 1fr; } .tl-row .tl-text { grid-column: 1 / -1; }
+  .bell-pop { width: auto; left: 8px; right: 8px; }
+}

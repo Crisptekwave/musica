@@ -15,6 +15,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/v3.css">
 </head>
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
@@ -47,13 +48,15 @@
 
     <main id="screens">
       <section class="screen active" id="s-pipeline" data-title="Pipeline">
+        <div class="v3-agents hidden" id="agents-m" aria-label="Agents"></div>
         <div class="lane-strip" id="lane-strip"></div>
         <div class="cards" id="track-cards"></div>
       </section>
 
       <section class="screen" id="s-bots" data-title="Live bots">
         <div class="bots-wrap glass"><canvas id="bots-canvas"></canvas></div>
-        <p class="hint">Tap a creature to see its task and log.</p>
+        <p class="hint hidden" id="bots-empty">No agent is reporting right now. A creature appears here when Claude or the local fallback starts a job.</p>
+        <p class="hint">One creature per agent. Tap it to see its task and steps.</p>
       </section>
 
       <section class="screen" id="s-listen" data-title="Listen">
@@ -92,13 +95,20 @@
         <div class="glass chart-box"><h3>Mix Judge / EarLoop <small>≥ 6.5 · auto-draft until judged</small></h3><canvas id="ch-judge" height="130"></canvas></div>
       </section>
 
+      <section class="screen" id="s-palette" data-title="Palette"><div id="palette-m"></div></section>
+
       <section class="screen" id="s-health" data-title="Machine">
         <div class="gauges">
           <div class="glass gauge-box"><canvas id="g-util" width="160" height="160"></canvas><span>GPU util</span></div>
           <div class="glass gauge-box"><canvas id="g-vram" width="160" height="160"></canvas><span>VRAM</span></div>
         </div>
         <div class="glass"><h3>GPU <small id="gpu-name"></small></h3><canvas id="ch-gpu" height="70"></canvas><div class="kv" id="gpu-kv"></div><div id="gpu-apps"></div></div>
-        <div class="glass"><h3>ACE-Step <small>acestep.log + journal</small></h3><div id="ace-box"></div></div>
+        <div class="glass"><h3>Studio <small>live REAPER · view only</small></h3><div id="studio-m"></div></div>
+        <div class="glass"><h3>Setup <small>read from the VM</small></h3><div id="setup-box"></div></div>
+        <div class="glass"><h3>Changes <small>newest first</small></h3><div id="changes-box"></div></div>
+        <div class="glass"><h3>Local model <small>vLLM</small></h3><div id="local-box"></div></div>
+        <div class="glass"><h3>Fallback <small>Claude limit</small></h3><div id="fb-box"></div></div>
+        <div class="glass" id="ace-card"><h3>ACE-Step <small>acestep.log + journal</small></h3><div id="ace-box"></div></div>
         <div class="glass"><h3>Running now <small>lane scripts</small></h3><div id="proc-box" class="svc"></div></div>
         <div class="glass"><h3>Tracks today</h3><div id="cap-box"></div></div>
         <div class="glass"><h3>Disk <small id="disk-path"></small></h3><div id="disk-box"></div></div>
@@ -122,6 +132,7 @@
       <button data-screen="bots"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9" fill="none" stroke-width="1.6"/></svg><span>Bots</span></button>
       <button data-screen="listen"><svg viewBox="0 0 24 24"><path d="M4 14h2v6H4zM8 9h2v11H8zM12 4h2v16h-2zM16 10h2v10h-2zM20 13h2v7h-2z"/></svg><span>Listen</span></button>
       <button data-screen="scores"><svg viewBox="0 0 24 24"><path d="M4 19l5-6 4 3 7-9 1 1-8 11-4-3-4 5z"/></svg><span>Scores</span></button>
+      <button data-screen="palette"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 0 0 3-3c0-5-4-11-8-11z"/></svg><span>Palette</span></button>
       <button data-screen="health"><svg viewBox="0 0 24 24"><path d="M2 12h4l2-5 4 10 2-5h8v2h-7l-3 7-4-10-1 3H2z"/></svg><span>Machine</span></button>
       <button data-screen="chat"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H8l-5 4z"/></svg><span>Chat</span><i class="dot hidden" id="chat-dot"></i></button>
     </nav>
@@ -139,6 +150,7 @@
   <script src="/static/js/player.js"></script>
   <script src="/static/js/live.js"></script>
   <script src="/static/js/control.js"></script>
+  <script src="/static/js/v3.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

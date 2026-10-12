@@ -11,6 +11,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/desktop.css">
+  <link rel="stylesheet" href="/static/v3.css">
 </head>
 <body class="desk">
   <div class="bg-grid" aria-hidden="true"></div>
@@ -33,6 +34,8 @@
       <a href="#/overview" data-page="overview" title="Overview"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"/></svg><span>Overview</span></a>
       <a href="#/tracks" data-page="tracks" title="Tracks"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zM3 11h18v2H3zM3 17h12v2H3z"/></svg><span>Tracks</span></a>
       <a href="#/activity" data-page="activity" title="Activity"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-7 4 14 3-7h6v2h-5l-4 9-4-14-2 5H2z"/></svg><span>Activity</span></a>
+      <a href="#/studio" data-page="studio" title="Studio"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H3zM8 19h8v2H8zM5 6v8h14V6z"/></svg><span>Studio</span></a>
+      <a href="#/palette" data-page="palette" title="Palette"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 0 0 3-3c0-5-4-11-8-11zM7 12a1.5 1.5 0 1 1 0-.1zM10 7.5a1.5 1.5 0 1 1 0-.1zM15 8a1.5 1.5 0 1 1 0-.1z"/></svg><span>Palette</span></a>
       <a href="#/machine" data-page="machine" title="Machine"><svg viewBox="0 0 24 24"><path d="M4 4h16v10H4zM8 18h8v2H8zM11 14h2v4h-2z"/></svg><span>Machine</span></a>
       <a href="#/controls" data-page="controls" title="Controls"><svg viewBox="0 0 24 24"><path d="M4 6h10v2H4zM18 6h2v2h-2zM14 4h2v6h-2zM4 16h4v2H4zM12 16h8v2h-8zM8 14h2v6H8z"/></svg><span>Controls</span></a>
       <a href="#/alerts" data-page="alerts" title="Alerts"><svg viewBox="0 0 24 24"><path d="M12 2a6 6 0 0 0-6 6v4l-2 4h16l-2-4V8a6 6 0 0 0-6-6zM10 19a2 2 0 0 0 4 0z"/></svg><span>Alerts</span><b class="rail-badge hidden" id="rail-alerts"></b></a>
@@ -55,6 +58,8 @@
     </header>
     <div class="banner hidden" id="banner"></div>
     <div class="paused-banner hidden" id="paused-banner"></div>
+
+    <div class="v3-strip hidden" id="agent-strip" aria-label="Agents"></div>
 
     <main class="dk-grid page" id="page-overview">
       <section class="panel p-pipe">
@@ -123,6 +128,10 @@
         <div class="kv dk-kv" id="gpu-kv"></div>
         <canvas id="ch-gpu" height="56"></canvas>
         <div id="ace-box"></div>
+        <h4>Setup</h4><div id="setup-box"></div>
+        <h4>Changes</h4><div id="changes-box"></div>
+        <h4>Local model</h4><div id="local-box"></div>
+        <h4>Fallback</h4><div id="fb-box"></div>
         <div id="disk-box"></div>
         <div class="svc" id="svc-box"></div>
       </section>
@@ -156,8 +165,23 @@
       <div class="metric-grid" id="metric-grid"></div>
       <div class="two-col">
         <div class="glass"><h3>Services</h3><div class="svc" id="m-svc"></div><h3 style="margin-top:14px">Sources</h3><div class="svc" id="m-src"></div></div>
-        <div class="glass"><h3>ACE-Step</h3><div id="m-ace"></div></div>
+        <div class="glass"><h3 id="m-ace-h">ACE-Step</h3><div id="m-ace"></div><h3>Local model</h3><div id="m-local"></div>
+          <div id="m-styles-wrap" class="hidden"><h3 style="margin-top:14px">Styles <small class="muted">from house_profile.json</small></h3><div id="m-styles"></div></div></div>
       </div>
+      <div class="two-col" style="margin-top:12px">
+        <div class="glass"><h3>Claude-limit fallback</h3><div id="m-fb"></div></div>
+        <div class="glass"><h3>Reference tracks <small class="muted">measure only</small></h3><div id="m-refs" class="v3-refs"></div></div>
+      </div>
+    </section>
+
+    <section class="page dk-page hidden" id="page-studio">
+      <div class="page-head"><div><h1>Studio</h1><p class="muted">Live view of the REAPER instances, one per producer. View only: nothing you do here reaches REAPER. Frames refresh every 2 s while this page is open.</p></div></div>
+      <div id="studio-box"></div>
+    </section>
+
+    <section class="page dk-page hidden" id="page-palette">
+      <div class="page-head"><div><h1>Palette</h1><p class="muted">Clips cut from Ryan's own tracks. Filter, then press play.</p></div></div>
+      <div id="palette-box"></div>
     </section>
 
     <section class="page dk-page hidden" id="page-controls">
@@ -195,6 +219,7 @@
   <script src="/static/js/player.js"></script>
   <script src="/static/js/live.js"></script>
   <script src="/static/js/control.js"></script>
+  <script src="/static/js/v3.js"></script>
   <script src="/static/js/desktop.js"></script>
 </body>
 </html>

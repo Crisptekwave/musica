@@ -79,6 +79,8 @@
   // ---------------- navigation ----------------
   function show(screen) {
     S.screen = screen; store.set("tekno-screen", screen);
+    if (screen === "health") V3.studio.start($("#studio-m"), { single: true }); else V3.studio.stop();  // frames only while looked at
+    if (screen === "palette") V3.palette.mount($("#palette-m")); else V3.palette.stop();
     document.querySelectorAll(".screen").forEach(el => el.classList.toggle("active", el.id === "s-" + screen));
     document.querySelectorAll("#tabbar button").forEach(b => b.classList.toggle("active", b.dataset.screen === screen));
     if (screen === "bots") bots.start(); else bots.stop();
@@ -113,13 +115,16 @@
     const errs = Object.entries(snap.sources || {}).filter(([k, v]) => v && v.ok === false && k !== "mail").map(([k, v]) => `${k}: ${v.error}`);
     const ban = $("#banner"); ban.textContent = errs.join(" · "); ban.classList.toggle("hidden", !errs.length);
     renderPipeline(snap);
-    bots.update(snap.lanes || {});
+    renderBots(snap.agents || []);
     if (S.screen === "listen") renderListen(snap); else trackNewAudio(snap);
     if (S.screen === "scores") renderScores(snap);
     pushGpu(snap);
     if (S.screen === "health") renderHealth(snap);
     renderChat(snap);
     renderBellM(snap);
+    const ag = $("#agents-m"), agHtml = V3.agentsHtml(snap.agents);
+    if (ag.dataset.html !== agHtml) { ag.dataset.html = agHtml; ag.innerHTML = agHtml; }
+    ag.classList.toggle("hidden", !(snap.agents || []).length);
     const m = snap.machine || {};
     $("#paused-banner").classList.toggle("hidden", !m.paused);
     if (m.paused) $("#paused-banner").textContent = `⏸ Machine paused: ${m.reason || ""}. New ACE jobs won't start.`;
@@ -187,7 +192,7 @@
       const moved = S.prevLanes[t.slug] && S.prevLanes[t.slug] !== t.lane;
       S.prevLanes[t.slug] = t.lane;
       const key = JSON.stringify([t.lane, t.state, t.progress, t.loops, t.last_sendback, t.files_lane, t.review_task_id,
-        t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm, t.current_task?.last_error]);
+        t.live?.script, t.live?.pid, t.board_behind, (t.runs || []).length, t.plan?.bpm, t.current_task?.last_error, t.brief]);
       if (el.dataset.key !== key) {
         el.dataset.key = key;
         el.className = `card glass tappable state-${t.state}`;
@@ -212,7 +217,7 @@
         <button class="btn approve" data-act="approve" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Approve</button>
         <button class="btn reject" data-act="reject" data-task="${esc(t.review_task_id)}" data-slug="${esc(t.slug)}">Reject + note</button></div>` : "";
     return `<div class="card-top"><div><div class="slug">${esc(t.slug)}</div>
-        <div class="lane-name">lane <b>${esc(t.lane)}</b>${t.current_task?.assignee ? ` · ${esc(t.current_task.assignee)}` : ""}</div>${Live.planLine(t)}</div>
+        <div class="lane-name">lane <b>${esc(t.lane)}</b>${t.current_task?.assignee ? ` · ${esc(t.current_task.assignee)}` : ""}</div>${Live.planLine(t)}${V3.chips(t)}</div>
         <div class="pills"><span class="pill ${esc(t.state)}">${esc(stateLabel)}</span>${t.loops ? `<span class="pill loop">↺ ${Number(t.loops)}</span>` : ""}</div></div>
       <div class="rail">${rail}</div>
       <div class="rail-labels"><span>Plan</span><span>Mix</span><span>Done</span></div>
@@ -280,13 +285,27 @@
   }
   function closeSheet() { $("#sheet").classList.remove("open"); $("#sheet-backdrop").classList.add("hidden"); }
 
-  function botSheet(lane, L) {
+  // Bots tab: one creature per agent in the roster (tekno-agent status files), not the retired pipeline lanes.
+  function renderBots(agents) {
+    const list = agents.slice(0, 12), byName = {};
+    for (const a of list) {
+      const state = a.state === "failed" ? "failed" : a.state !== "working" ? "idle" : a.stale ? "waiting" : "working";
+      byName[a.name] = { state, label: a.stale ? "no update" : a.state, agent: a };
+    }
+    bots.setNames(list.map(a => a.name));
+    bots.update(byName);
+    $("#bots-empty").classList.toggle("hidden", list.length > 0);
+  }
+
+  function agentSheet(name, L) {
+    const a = L.agent;
+    if (!a) return;
     const col = { working: "var(--acid)", failed: "var(--red)", waiting: "var(--uv-hot)", idle: "var(--muted)" }[L.state] || "var(--muted)";
-    const log = (L.log || []).map(x => `${x.at ? new Date(x.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}  ${x.text}`).join("\n");
-    openSheet(`<h2>${esc(lane)} bot</h2><span class="state-tag" style="color:${col}">${esc(L.state === "idle" ? "sleeping" : L.state)}</span>
-      <h3>Current task</h3><p>${L.task ? `<span class="mono">${esc(L.task.title)}</span><br><small class="muted">${esc(L.task.id || "")} ${L.task.assignee ? "· " + esc(L.task.assignee) : ""}${L.task.via ? ` · seen via ${esc(L.task.via)}` : ""}${L.task.since ? ` · ${Live.dur(Date.now() / 1000 - L.task.since)}` : ""}</small>${L.task.error ? `<br><span class="warn-text">${esc(L.task.error)}</span>` : ""}` : `<span class="muted">No card in this lane right now.</span>`}</p>
-      ${L.handoff_to ? `<p class="muted">Last hand-off → <b style="color:var(--acid)">${esc(L.handoff_to)}</b> ${ago(L.handoff_at)}</p>` : ""}
-      <h3>Last log lines</h3><div class="log">${esc(log || "nothing logged yet")}</div>`);
+    const hist = (a.history || []).slice().reverse().map(h => `${new Date(h.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}  ${h.step || ""}`).join("\n");
+    openSheet(`<h2>${esc(a.name)}</h2>${V3.modelChip(a.model)} <span class="state-tag" style="color:${col}">${esc(L.label)}</span>
+      <h3>Task</h3><p>${a.card ? `<span class="mono">${esc(a.card)}</span><br>` : ""}${esc(a.task || "–")}</p>
+      <h3>Now</h3><p>${esc(a.step || a.result || "–")}<br><small class="muted">updated ${ago(a.updated)}</small></p>
+      <h3>Steps</h3><div class="log">${esc(hist || "nothing reported yet")}</div>`);
   }
 
   // ---------------- listen ----------------
@@ -392,7 +411,13 @@
     } else {
       $("#gpu-kv").innerHTML = `<div style="grid-column:1/-1" class="warn-text">${esc(g.error || "no GPU data")}</div>`;
     }
-    $("#ace-box").innerHTML = Live.aceHtml(h.ace) + Live.journalHtml(h.journal);
+    const ace = h.ace?.enabled !== false;  // ACE-Step was removed
+    $("#ace-card").classList.toggle("hidden", !ace);
+    if (ace) $("#ace-box").innerHTML = Live.aceHtml(h.ace) + Live.journalHtml(h.journal);
+    $("#setup-box").innerHTML = V3.setupHtml(snap);
+    $("#changes-box").innerHTML = V3.changesHtml(snap);
+    $("#local-box").innerHTML = V3.localHtml(snap);
+    $("#fb-box").innerHTML = V3.fallbackHtml(snap);
     $("#proc-box").innerHTML = Live.procsHtml(snap.processes);
     const n = h.tracks_today ?? 0, cap = h.tracks_cap || 6;
     $("#cap-box").innerHTML = `<div class="cap-big">${n}<small> / ${cap}</small></div>
@@ -460,7 +485,7 @@
   }
 
   // ---------------- wiring ----------------
-  const bots = new Bots($("#bots-canvas"), (lane, L) => { haptic(12); botSheet(lane, L); });
+  const bots = new Bots($("#bots-canvas"), (name, L) => { haptic(12); agentSheet(name, L); });
   const player = new Player({
     a: $("#audio-a"), b: $("#audio-b"), spectrum: $("#spectrum"), scope: $("#scope"),
     meterL: $("#meter-l"), meterR: $("#meter-r"), meterDb: $("#meter-db"),

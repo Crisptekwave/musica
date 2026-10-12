@@ -1,0 +1,9 @@
+[Unit]
+Description=Post the morning report at 07:50 Brussels time
+
+[Timer]
+OnCalendar=*-*-* 07:50:00 Europe/Brussels
+Persistent=true
+
+[Install]
+WantedBy=timers.target
