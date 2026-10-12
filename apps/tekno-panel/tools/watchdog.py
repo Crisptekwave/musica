@@ -244,14 +244,19 @@ def check_health() -> list[dict]:
 # ---------------------------------------------------------------- Claude usage (ccusage)
 def ccusage(*args) -> dict | None:
     try:
+        path = os.environ.get("PATH", "/usr/bin:/bin") + ":" + os.path.expanduser("~/.local/bin")  # node lives there
         r = subprocess.run([CCUSAGE, *args, "--json"], capture_output=True, text=True, timeout=90,
-                           env={**os.environ, "CLAUDE_CONFIG_DIR": str(CC_HOME)})
+                           env={**os.environ, "CLAUDE_CONFIG_DIR": str(CC_HOME), "PATH": path})
         return json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
 def _tokens(b: dict) -> int:
+    """Tokens without cache reads (ccusage's total is mostly cheap cache reads; this is the part that weighs)."""
+    t = b.get("tokenCounts")
+    if isinstance(t, dict):
+        return sum(int(t.get(k) or 0) for k in ("inputTokens", "outputTokens", "cacheCreationInputTokens"))
     return int(b.get("totalTokens") or 0)
 
 
@@ -270,7 +275,9 @@ def check_usage(now, dry) -> list[dict]:
              "start": active.get("startTime"), "end": active.get("endTime"), "tokens": _tokens(active),
              "cost": round(float(active.get("costUSD") or 0), 2),
              "tokens_per_min": round(float((active.get("burnRate") or {}).get("tokensPerMinute") or 0)),
-             "projected": int(proj.get("totalTokens") or 0), "remaining_min": proj.get("remainingMinutes")}}
+             # ccusage projects the total incl. cache reads; scale it to the same measure as "tokens"
+             "projected": int(int(proj.get("totalTokens") or 0) * _tokens(active) / max(1, int(active.get("totalTokens") or 0))),
+             "remaining_min": proj.get("remainingMinutes")}}
     if not dry:
         tmp = MACHINE / "usage.tmp"
         tmp.write_text(json.dumps(u, indent=1))
