@@ -9,6 +9,9 @@ Checks (plain code, no tokens):
   agents    roster agents still "working" but silent for 20+ min.
   services  failed user units (the tekno-* allowlist is restarted once per 12 h), local model, panel, gateway.
   disk      root and data disk free space.
+  usage     ccusage (reads the same transcripts): the active 5-hour block, its projection and today's tokens, saved to
+            <MACHINE>/usage.json for the panel; a warning when the block is projected past USAGE_WARN of the biggest
+            block so far (the closest thing to the plan limit we can see: we hit the limit in such a block before).
   logs      error lines from the tekno user units' journal, failed or turn-limited VM job logs, night-shift errors.
 
 New problems go to agent-mail thread "watchdog" as qwen, once, and again only if still open after REPOST_S; error logs
@@ -56,6 +59,8 @@ RESTART_EVERY_S = 12 * 3600
 RESTARTABLE = ("tekno-panel.service", "tekno-control-helper.service", "tekno-reaper-snap.service",
                "tekno-alert-relay.service")
 ORDER = os.environ.get("TEKNO_NIGHT_ORDER", "local,gateway").split(",")
+CCUSAGE = os.environ.get("TEKNO_CCUSAGE", "/mnt/agent-data/apps/ccusage/bin/ccusage")
+USAGE_WARN = 0.9
 
 
 def issue(key: str, level: str, text: str, claude: bool = False, log: str = "") -> dict:
@@ -236,6 +241,48 @@ def check_health() -> list[dict]:
     return found
 
 
+# ---------------------------------------------------------------- Claude usage (ccusage)
+def ccusage(*args) -> dict | None:
+    try:
+        r = subprocess.run([CCUSAGE, *args, "--json"], capture_output=True, text=True, timeout=90,
+                           env={**os.environ, "CLAUDE_CONFIG_DIR": str(CC_HOME)})
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def _tokens(b: dict) -> int:
+    return int(b.get("totalTokens") or 0)
+
+
+def check_usage(now, dry) -> list[dict]:
+    if not Path(CCUSAGE).exists():
+        return []
+    blocks = [b for b in (ccusage("blocks") or {}).get("blocks") or [] if isinstance(b, dict) and not b.get("isGap")]
+    daily = (ccusage("daily", "--since", time.strftime("%Y%m%d", time.gmtime(now))) or {}).get("daily") or []
+    active = next((b for b in blocks if b.get("isActive")), None)
+    biggest = max((_tokens(b) for b in blocks if not b.get("isActive")), default=0)
+    proj = (active or {}).get("projection") or {}
+    u = {"at": now, "biggest_block": biggest,
+         "today_tokens": sum(int(d.get("totalTokens") or 0) for d in daily if isinstance(d, dict)),
+         "today_cost": round(sum(float(d.get("totalCost") or 0) for d in daily if isinstance(d, dict)), 2),
+         "block": None if not active else {
+             "start": active.get("startTime"), "end": active.get("endTime"), "tokens": _tokens(active),
+             "cost": round(float(active.get("costUSD") or 0), 2),
+             "tokens_per_min": round(float((active.get("burnRate") or {}).get("tokensPerMinute") or 0)),
+             "projected": int(proj.get("totalTokens") or 0), "remaining_min": proj.get("remainingMinutes")}}
+    if not dry:
+        tmp = MACHINE / "usage.tmp"
+        tmp.write_text(json.dumps(u, indent=1))
+        tmp.replace(MACHINE / "usage.json")
+    b = u["block"]
+    if b and biggest and max(b["projected"], b["tokens"]) > USAGE_WARN * biggest:
+        return [issue(f"usage:{b['start']}", "warn", f"this 5-hour Claude block is projected at {max(b['projected'], b['tokens']):,} "
+                      f"tokens, {100 * max(b['projected'], b['tokens']) / biggest:.0f}% of the biggest block so far "
+                      f"({biggest:,}); the limit may be close. Ends {b['end']}")]
+    return []
+
+
 # ---------------------------------------------------------------- logs
 def check_logs(state, now) -> list[dict]:
     found = []
@@ -303,7 +350,8 @@ def tick(dry: bool = False, now: float | None = None) -> dict:
     ps = procs()
     found, actions = [], []
     for fn in (lambda: check_jobs(ps, now, dry), lambda: (check_tokens(now), []), lambda: (check_agents(now), []),
-               lambda: check_services(state, now, dry), lambda: (check_health(), []), lambda: (check_logs(state, now), [])):
+               lambda: check_services(state, now, dry), lambda: (check_health(), []), lambda: (check_logs(state, now), []),
+               lambda: (check_usage(now, dry), [])):
         try:
             f, a = fn()
         except Exception as e:  # noqa: BLE001 - one broken check never stops the others

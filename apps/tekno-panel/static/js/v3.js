@@ -64,8 +64,18 @@
       + list("Audio models", u.models) + list("Tools", u.tools)
       + `<div class="svc-row v3-setrow"><span class="sd ${g.on ? "up" : "idle"}"></span><b>FreeLLMAPI gateway</b><span class="via">${g.on ? `on · model ${esc(g.model || "?")} · fallback order ${esc(g.order)}` : "off"}</span></div>`
       + `<div class="svc-row v3-setrow"><span class="sd ${t ? (t.model_errors ? "failed" : "up") : "idle"}"></span><b>Night tagging</b><span class="via">${t ? `${t.total} samples tagged · CLAP ${t.clap ? "on" : "off"} last run · ${esc(ago(t.at))}` : "not run yet"}</span></div>`
+      + usageHtml(u.usage)
       + watchdogHtml(u.watchdog)
       + list("Deliveries", (u.deliveries || []).map(d => `${d.name} (${ago(d.mtime)})`));
+  }
+  function usageHtml(u) {
+    if (!u) return "";
+    const k = n => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n || 0);
+    const b = u.block, high = b && u.biggest_block && Math.max(b.projected, b.tokens) > 0.9 * u.biggest_block;
+    const left = b && b.remaining_min != null ? ` · ends in ${Math.round(b.remaining_min)} min` : "";
+    return `<div class="svc-row v3-setrow"><span class="sd ${high ? "failed" : b ? "up" : "idle"}"></span><b>Claude usage (VM jobs)</b>
+      <span class="via">${b ? `this 5-hour block ${k(b.tokens)} tokens, projected ${k(b.projected)}${u.biggest_block ? ` (biggest block so far ${k(u.biggest_block)})` : ""}${left}` : "no active block"}
+      · today ${k(u.today_tokens)} · checked ${esc(ago(u.at))}</span></div>`;
   }
   function watchdogHtml(w) {
     if (!w) return `<div class="svc-row v3-setrow"><span class="sd idle"></span><b>Watchdog</b><span class="via">not running yet</span></div>`;

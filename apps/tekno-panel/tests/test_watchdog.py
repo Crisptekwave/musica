@@ -112,3 +112,28 @@ def test_a_broken_check_does_not_stop_the_others(tmp_path, monkeypatch):
     monkeypatch.setattr(wd, "mail", lambda b: None)
     s = wd.tick(now=NOW)
     assert {i["key"] for i in s["open"]} == {"watchdog:ZeroDivisionError", "failed:a"}
+
+
+def test_usage_is_saved_and_warns_near_the_biggest_block(tmp_path, monkeypatch):
+    cc = tmp_path / "ccusage"
+    cc.write_text("")
+    monkeypatch.setattr(wd, "CCUSAGE", str(cc))
+    monkeypatch.setattr(wd, "MACHINE", tmp_path)
+    blocks = {"blocks": [
+        {"startTime": "2026-10-11T16:00:00Z", "isActive": False, "totalTokens": 40_000_000},
+        {"isGap": True, "totalTokens": 0},
+        {"startTime": "2026-10-12T00:00:00Z", "endTime": "2026-10-12T05:00:00Z", "isActive": True, "totalTokens": 20_000_000,
+         "costUSD": 12.5, "burnRate": {"tokensPerMinute": 150000}, "projection": {"totalTokens": 38_000_000, "remainingMinutes": 140}}]}
+    daily = {"daily": [{"date": "2026-10-12", "totalTokens": 25_000_000, "totalCost": 15.2}]}
+    monkeypatch.setattr(wd, "ccusage", lambda *a: blocks if a[0] == "blocks" else daily)
+    found = wd.check_usage(NOW, dry=False)
+    u = json.loads((tmp_path / "usage.json").read_text())
+    assert u["block"]["projected"] == 38_000_000 and u["biggest_block"] == 40_000_000 and u["today_tokens"] == 25_000_000
+    assert found and "95% of the biggest block" in found[0]["text"]
+    blocks["blocks"][2]["projection"]["totalTokens"] = 21_000_000
+    assert wd.check_usage(NOW, dry=False) == []
+
+
+def test_usage_is_skipped_without_ccusage(tmp_path, monkeypatch):
+    monkeypatch.setattr(wd, "CCUSAGE", str(tmp_path / "missing"))
+    assert wd.check_usage(NOW, dry=False) == []

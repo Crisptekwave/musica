@@ -85,4 +85,5 @@ def inventory(machine_root: Path, apps: Path, env=os.environ) -> dict:
         "deliveries": deliveries,
         "changelog": changelog(machine_root / "CHANGELOG.md"),
         "watchdog": _watchdog(machine_root / "watchdog" / "state.json"),
+        "usage": _json(machine_root / "usage.json"),
     }
