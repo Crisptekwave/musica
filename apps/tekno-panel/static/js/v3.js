@@ -64,7 +64,16 @@
       + list("Audio models", u.models) + list("Tools", u.tools)
       + `<div class="svc-row v3-setrow"><span class="sd ${g.on ? "up" : "idle"}"></span><b>FreeLLMAPI gateway</b><span class="via">${g.on ? `on · model ${esc(g.model || "?")} · fallback order ${esc(g.order)}` : "off"}</span></div>`
       + `<div class="svc-row v3-setrow"><span class="sd ${t ? (t.model_errors ? "failed" : "up") : "idle"}"></span><b>Night tagging</b><span class="via">${t ? `${t.total} samples tagged · CLAP ${t.clap ? "on" : "off"} last run · ${esc(ago(t.at))}` : "not run yet"}</span></div>`
+      + watchdogHtml(u.watchdog)
       + list("Deliveries", (u.deliveries || []).map(d => `${d.name} (${ago(d.mtime)})`));
+  }
+  function watchdogHtml(w) {
+    if (!w) return `<div class="svc-row v3-setrow"><span class="sd idle"></span><b>Watchdog</b><span class="via">not running yet</span></div>`;
+    const crit = w.open.filter(i => i.level === "crit").length;
+    const rows = w.open.map(i => `<div class="v3-small ${i.level === "crit" ? "warn-text" : "muted"}">[${esc(i.level)}] ${esc(i.text)}${i.claude ? " · needs Claude" : ""}</div>`).join("");
+    const acts = (w.actions || []).map(a => `<div class="v3-small muted">${esc(a)}</div>`).join("");
+    return `<div class="svc-row v3-setrow"><span class="sd ${crit ? "failed" : w.open.length ? "idle" : "up"}"></span><b>Watchdog</b>
+      <span class="via">${w.open.length ? `${w.open.length} open issue(s), ${crit} critical` : "all clear"} · checked ${esc(ago(w.last_run))}</span>${rows}${acts}</div>`;
   }
   function changesHtml(snap) {
     const c = (snap.setup || {}).changelog || [];

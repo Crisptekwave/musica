@@ -1,0 +1,10 @@
+[Unit]
+Description=Tekno Machine watchdog: agents (runtime, token burn, loops), services, disk and error logs
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/tekno-panel/env
+Environment=CLAUDE_CONFIG_DIR=/mnt/agent-data/apps/claude-home
+ExecStart=/usr/bin/python3 %h/.config/agent-mail/watchdog.py
+Nice=10
+TimeoutStartSec=4min

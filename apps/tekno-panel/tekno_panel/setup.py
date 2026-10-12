@@ -60,6 +60,14 @@ def changelog(path: Path, n: int = 30) -> list[str]:
     return lines[-n:][::-1]  # newest first
 
 
+def _watchdog(p: Path) -> dict | None:
+    w = _json(p)
+    if not isinstance(w, dict):
+        return None
+    return {"last_run": w.get("last_run"), "open": [i for i in w.get("open") or [] if isinstance(i, dict)][:20],
+            "actions": (w.get("actions") or [])[-5:][::-1]}
+
+
 def inventory(machine_root: Path, apps: Path, env=os.environ) -> dict:
     models = apps / "models"
     night = machine_root / "night"
@@ -76,4 +84,5 @@ def inventory(machine_root: Path, apps: Path, env=os.environ) -> dict:
         "night": {"tag": _json(night / "tag_last.json"), "digest_at": (_json(night / "digest_last.json") or {}).get("at")},
         "deliveries": deliveries,
         "changelog": changelog(machine_root / "CHANGELOG.md"),
+        "watchdog": _watchdog(machine_root / "watchdog" / "state.json"),
     }

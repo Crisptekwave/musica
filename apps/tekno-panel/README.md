@@ -239,5 +239,11 @@ The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` 
   plugin bundles under `apps/*/{vst3,clap,lv2}` (and `apps/*/usr/lib/...`), models in `apps/models/hf/hub`, scripts in
   `tekno_machine/tools`, hand-off folders, gateway env, night-shift results, and `tekno_machine/CHANGELOG.md` (one
   `- ` line per change; every VM job appends one when it ends).
+- **Watchdog** (`tools/watchdog.py`, timer `tekno-watchdog` every 5 min, plain code): VM job runtime (warn 2 h, stops
+  the job's own process tree at 4 h), Claude Code token burn per hour and repeated identical tool calls (from the
+  transcripts in `CLAUDE_CONFIG_DIR`), stale agents, failed user units (tekno-* restarted once per 12 h), local model,
+  panel, gateway, disk, error lines in the tekno units' journal, failed VM job logs, night-shift errors. New issues
+  are posted once to agent-mail thread `watchdog` (error logs with a local-Qwen summary); `watchdog/state.json` holds
+  open issues and `needs_claude`; the panel shows it under Setup.
 - **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
 - ACE-Step probes are off unless `TEKNO_ACE_ENABLED=1`.
