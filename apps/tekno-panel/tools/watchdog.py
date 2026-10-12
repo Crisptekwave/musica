@@ -42,7 +42,8 @@ WD = Path(os.environ.get("TEKNO_WATCHDOG_DIR", str(MACHINE / "watchdog")))
 CC_JOBS = Path(os.environ.get("TEKNO_CC_JOBS_DIR", "/mnt/agent-data/apps/tekno-panel-next/cc_jobs"))
 CC_HOME = Path(os.environ.get("CLAUDE_CONFIG_DIR", "/mnt/agent-data/apps/claude-home"))
 NIGHT = MACHINE / "night"
-PANEL = os.environ.get("TEKNO_PANEL_HEALTH", "http://127.0.0.1:3020/healthz")
+PANEL = os.environ.get("TEKNO_PANEL_HEALTH") or \
+    f"http://{os.environ.get('TEKNO_HOST', '127.0.0.1')}:{os.environ.get('TEKNO_PORT', '3020')}/healthz"  # the panel's own bind
 DATA_DISK = os.environ.get("TEKNO_DATA_DISK", "/mnt/agent-data")
 PROC = Path("/proc")
 
