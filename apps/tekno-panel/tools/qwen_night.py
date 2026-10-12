@@ -49,7 +49,8 @@ ORDER = os.environ.get("TEKNO_NIGHT_ORDER", "local,gateway").split(",")  # local
 LAST = {"used": "?"}  # which endpoint:model answered last (recorded per tag)
 MAX_TAG = int(os.environ.get("TEKNO_NIGHT_MAX_TAG", 1500))
 BATCH = 20
-CLAP_ID = os.environ.get("TEKNO_CLAP_MODEL", "laion/larger_clap_music")
+# laion/larger_clap_music ships a broken logit scale (every prompt scores the same); clap-htsat-unfused works
+CLAP_ID = os.environ.get("TEKNO_CLAP_MODEL", "laion/clap-htsat-unfused")
 CLAP_SR = 48000
 CLAP_ROLE_P = 0.5   # CLAP must be this sure (softmax over the role prompts) to decide a role
 CLAP_TAG_P = 0.25   # and this sure (softmax over the character prompts) to back up a tag
@@ -351,7 +352,12 @@ def parse_items(text: str) -> dict:
 def tag(limit: int, dry: bool) -> int:
     db_path = NIGHT / "tags.json"
     db = load_json(db_path, {})
-    todo = [p for p in library_files() if str(p.relative_to(LIB)) not in db][:limit]
+    clap = None if dry else clap_or_none()
+
+    def due(rel: str) -> bool:  # new, or tagged before CLAP could listen
+        e = db.get(rel)
+        return e is None or (clap is not None and "clap_role" not in e and "error" not in e)
+    todo = [p for p in library_files() if due(str(p.relative_to(LIB)))][:limit]
     print(f"{len(db)} tagged, {len(todo)} to do tonight")
     if dry or not todo:
         return 0
@@ -361,8 +367,9 @@ def tag(limit: int, dry: bool) -> int:
     log = (NIGHT / "runs").joinpath(time.strftime("%Y%m%d-%H%M%S") + "-tag.log")
     log.parent.mkdir(parents=True, exist_ok=True)
     with open(log, "w") as lf:
-        clap = clap_or_none(lf)
         stats["clap"] = clap is not None
+        if clap is None:
+            lf.write("CLAP unavailable: tagging from the measurements alone\n")
         for i in range(0, len(todo), BATCH):
             batch = []
             for p in todo[i:i + BATCH]:

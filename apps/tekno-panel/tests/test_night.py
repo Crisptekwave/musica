@@ -208,3 +208,18 @@ def test_digest_says_when_it_cannot_read_services_and_a_job_is_running(tmp_path,
     f = "\n".join(qn.facts())
     assert "failed services: unknown (systemctl: Failed to connect to bus" in f
     assert "Claude Code job tm001-loop: running" in f
+
+
+def test_samples_tagged_without_clap_are_heard_again_once_clap_works(tmp_path, monkeypatch):
+    lib, night = tmp_path / "lib", tmp_path / "night"
+    write_wavs(lib)
+    for k, v in (("LIB", lib), ("NIGHT", night), ("clip48", lambda p: p), ("clap_or_none", lambda log=None: None)):
+        monkeypatch.setattr(qn, k, v)
+    monkeypatch.setattr(agent_status, "DIR", tmp_path / "agents")
+    monkeypatch.setattr(qn, "chat", lambda *a, **k: "{}")
+    qn.tag(100, False)
+    assert "clap_role" not in json.loads((night / "tags.json").read_text())["odd.wav"]
+    monkeypatch.setattr(qn, "clap_or_none", lambda log=None: FakeClap())
+    qn.tag(100, False)
+    db = json.loads((night / "tags.json").read_text())
+    assert db["odd.wav"]["clap_role"] == "hat" and "error" in db["broken.wav"]  # broken files are not retried
