@@ -364,6 +364,8 @@
     const ace = a.enabled !== false;  // ACE-Step was removed: the box only shows when something still probes it
     $("#ace-box").innerHTML = `${ace ? `<h4>ACE-Step</h4>${Live.aceHtml(a)}${Live.journalHtml(h.journal)}` : ""}${Live.gpuAppsHtml(g)}
       <h4>Running now</h4>${Live.procsHtml(snap.processes)}`;
+    $("#setup-box").innerHTML = V3.setupHtml(snap);
+    $("#changes-box").innerHTML = V3.changesHtml(snap);
     $("#local-box").innerHTML = V3.localHtml(snap);
     $("#fb-box").innerHTML = V3.fallbackHtml(snap);
     $("#disk-box").innerHTML = d.ok ? `<div class="disk-line"><b class="${d.warn ? "warn-text" : ""}">${d.free_gb} GB</b> free on ${esc(d.path)} · ${d.used_pct}% used${d.warn ? ` · <span class="warn-text">under ${d.warn_gb} GB</span>` : ""}</div>

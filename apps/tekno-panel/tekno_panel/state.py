@@ -6,7 +6,7 @@ import threading
 import time
 import urllib.parse
 
-from . import acelog, agents, files, insights, kanban, local, machine, procs
+from . import acelog, agents, files, setup, insights, kanban, local, machine, procs
 from .control import Controller
 from .history import History
 from .config import LANES, Settings
@@ -339,11 +339,12 @@ class Collector:
         for key, fn in (("local", lambda: local.local_model(s.vllm_url, machine.gpu())),
                         ("styles", lambda: local.styles(s.house_profile_path)),
                         ("references", lambda: local.references(s.references_dir)),
-                        ("agents", lambda: agents.roster(s.agents_path, now))):
+                        ("agents", lambda: agents.roster(s.agents_path, now)),
+                        ("setup", lambda: setup.inventory(s.machine_root, s.machine_root.parent / "apps"))):
             try:
                 out[key] = fn()
             except Exception as e:  # one odd file must not blank the snapshot
-                out[key] = None if key != "agents" else []
+                out[key] = [] if key == "agents" else None
                 out.setdefault("extras_errors", []).append(f"{key}: {e}")
         try:
             out["fallback"] = local.fallback(s.fallback_path, (out.get("local") or {}).get("ok"), now)

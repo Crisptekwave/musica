@@ -88,3 +88,6 @@
 #studio-m .empty-state, #palette-m .empty-state { text-align: center; padding: 24px 12px; color: var(--muted); }
 #studio-m .empty-state b, #palette-m .empty-state b { display: block; color: var(--acid); margin-bottom: 6px; }
 #palette-m .icon-btn { display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--acid); }
+/* setup rows: label above, values below (long plugin lists wrap cleanly on a phone) */
+.svc-row.v3-setrow { display: block; }
+.svc-row.v3-setrow .via { display: block; text-align: left; margin: 2px 0 6px; white-space: normal; }

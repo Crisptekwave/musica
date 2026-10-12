@@ -235,5 +235,9 @@ The front-end is plain HTML/CSS/JS in `static/` with no build step: `js/app.js` 
   `TEKNO_GATEWAY_MODEL` to let the fallback think with a bigger free model (`TEKNO_FALLBACK_ORDER`, default
   `gateway,local`) and give the night shift a backup (`TEKNO_NIGHT_ORDER`, default `local,gateway`). The key is read
   from the `FREELLMAPI_API_KEY` line in `~/.hermes/.env`, never copied. Down or rate-limited endpoints are skipped.
+- **Setup + Changes** (Machine tab, `tekno_panel/setup.py`): read from disk on every refresh, never a kept list:
+  plugin bundles under `apps/*/{vst3,clap,lv2}` (and `apps/*/usr/lib/...`), models in `apps/models/hf/hub`, scripts in
+  `tekno_machine/tools`, hand-off folders, gateway env, night-shift results, and `tekno_machine/CHANGELOG.md` (one
+  `- ` line per change; every VM job appends one when it ends).
 - **Cards**: `study/brief.json` may carry `style`, `styles`, `model` (sonnet|opus|fable) and `agent`; shown as chips.
 - ACE-Step probes are off unless `TEKNO_ACE_ENABLED=1`.

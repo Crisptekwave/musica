@@ -54,6 +54,23 @@
       ${runs ? `<h4>Last runs</h4>${runs}` : ""}`;
   }
 
+  // ---------------- setup: what is installed, read from disk; and the changelog every VM job appends to
+  function setupHtml(snap) {
+    const u = snap.setup;
+    if (!u) return `<div class="muted v3-small">No setup probe yet.</div>`;
+    const list = (label, xs) => xs && xs.length ? `<div class="svc-row v3-setrow"><b>${esc(label)}</b><span class="via">${xs.map(esc).join(" · ")}</span></div>` : "";
+    const p = u.plugins || {}, g = u.gateway || {}, t = (u.night || {}).tag;
+    return list("Plugins (VST3)", p.vst3) + list("Plugins (CLAP)", p.clap) + list("Plugins (LV2)", p.lv2)
+      + list("Audio models", u.models) + list("Tools", u.tools)
+      + `<div class="svc-row v3-setrow"><span class="sd ${g.on ? "up" : "idle"}"></span><b>FreeLLMAPI gateway</b><span class="via">${g.on ? `on · model ${esc(g.model || "?")} · fallback order ${esc(g.order)}` : "off"}</span></div>`
+      + `<div class="svc-row v3-setrow"><span class="sd ${t ? (t.model_errors ? "failed" : "up") : "idle"}"></span><b>Night tagging</b><span class="via">${t ? `${t.total} samples tagged · CLAP ${t.clap ? "on" : "off"} last run · ${esc(ago(t.at))}` : "not run yet"}</span></div>`
+      + list("Deliveries", (u.deliveries || []).map(d => `${d.name} (${ago(d.mtime)})`));
+  }
+  function changesHtml(snap) {
+    const c = (snap.setup || {}).changelog || [];
+    return c.length ? `<div class="log v3-log">${esc(c.join("\n"))}</div>` : `<div class="muted v3-small">No changes logged yet.</div>`;
+  }
+
   function stylesHtml(snap) {
     const s = snap.styles;
     if (!s || !s.length) return "";
@@ -210,5 +227,5 @@
     stop() { if (this.audio) { this.audio.pause(); this.playing = null; } },
   };
 
-  window.V3 = { chips, modelChip, agentsHtml, localHtml, fallbackHtml, stylesHtml, refsHtml, studio, palette };
+  window.V3 = { chips, modelChip, agentsHtml, localHtml, fallbackHtml, setupHtml, changesHtml, stylesHtml, refsHtml, studio, palette };
 })();

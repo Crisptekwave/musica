@@ -414,6 +414,8 @@
     const ace = h.ace?.enabled !== false;  // ACE-Step was removed
     $("#ace-card").classList.toggle("hidden", !ace);
     if (ace) $("#ace-box").innerHTML = Live.aceHtml(h.ace) + Live.journalHtml(h.journal);
+    $("#setup-box").innerHTML = V3.setupHtml(snap);
+    $("#changes-box").innerHTML = V3.changesHtml(snap);
     $("#local-box").innerHTML = V3.localHtml(snap);
     $("#fb-box").innerHTML = V3.fallbackHtml(snap);
     $("#proc-box").innerHTML = Live.procsHtml(snap.processes);
